@@ -11,7 +11,7 @@ RUN npm pack three@0.160.0 --silent \
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY index.html data.js model.js /usr/share/nginx/html/
+COPY index.html data.js model.js parts.js /usr/share/nginx/html/
 COPY --from=vendor /v/out/three /usr/share/nginx/html/vendor/three
 # Импорт three.js — из образа вместо CDN; странице нужен doctype (в артефакте его добавляет хостинг)
 RUN sed -i 's#https://cdn.jsdelivr.net/npm/three@0.160.0/#./vendor/three/#g' /usr/share/nginx/html/index.html \

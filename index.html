@@ -126,6 +126,13 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .pintable td:first-child { font: 600 13px var(--f-mono); color: var(--accent); width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 .pintable tr.free td { color: var(--muted); }
 .pintable button { background: none; border: 0; padding: 0; color: var(--fg); text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+.stabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.stabs button { background: none; border: 0; border-radius: 6px; padding: 8px 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.stabs button[aria-selected="true"] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.layer-tools { display: flex; gap: 6px; }
+.layer-tools button { flex: 1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font-size: 12px; }
+.other-hit { margin: 4px 8px 8px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 12.5px; color: var(--muted); background: none; text-align: left; width: calc(100% - 16px); }
+.pdot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; justify-self: center; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 .tab { background: var(--panel-2); border: 1px solid var(--line); border-radius: 99px; padding: 6px 12px; font-size: 12.5px; }
 .tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
@@ -212,8 +219,10 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <select id="source"></select>
           <div class="src-sub" id="srcSub"></div>
         </div>
+        <div class="stabs" role="tablist"><button data-stab="wires" aria-selected="true">Провода</button><button data-stab="parts" aria-selected="false">Запчасти</button></div>
         <input id="search" type="search" placeholder="Поиск: ДПКВ, стоп, ГЧ, 48…" autocomplete="off">
         <div class="harness-list" id="harnessList"></div>
+        <div id="layerBox" hidden><div class="layer-tools"><button data-layers="all">Все слои</button><button data-layers="none">Скрыть все</button></div><div class="harness-list" id="layerList"></div></div>
       </div>
       <div class="wire-list" id="wireList"></div>
     </aside>
@@ -229,6 +238,8 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <button id="tInt" aria-pressed="true" title="Панель, сиденья, пол">Салон</button>
           <button id="tComp" aria-pressed="true" title="Датчики, фары, блоки">Узлы</button>
           <button id="tLabels" aria-pressed="false">Подписи</button>
+          <button id="tWires" aria-pressed="true" title="Все жгуты проводов">Провода</button>
+          <button id="tParts" aria-pressed="true" title="Все слои запчастей">Запчасти</button>
         </div>
       </div>
       <div class="hint" id="hint">ЛКМ — вращать · ПКМ — сдвигать · колесо — зум · клик по проводу — описание</div>
@@ -250,6 +261,7 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
 </dialog>
 
 <script src="data.js"></script>
+<script src="parts.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -268,13 +280,20 @@ const { HARNESSES, COMPONENTS, CIRCUITS, PINOUT, CONNECTORS, CONN_NOTES, COLOR_N
 const CONN_IDX = {};
 CONNECTORS.forEach(k => Object.entries(k.pins).forEach(([p, v]) => { if (typeof v === 'string') (CONN_IDX[v] ||= []).push({ k, p }); }));
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
+// Запчасти: слои по системам; электрические узлы из data.js — отдельный слой «Электрооборудование»
+const { LAYERS: PLAYERS, PARTS: RAW_PARTS } = window.NIVA_PARTS;
+const PLMAP = Object.fromEntries(PLAYERS.map(l => [l.id, l]));
+const PARTS = RAW_PARTS.map(p => ({ ...p, kind: 'part' }));
+const PMAP = Object.fromEntries(PARTS.map(p => [p.id, p]));
 const HMAP = Object.fromEntries(HARNESSES.map(h => [h.id, h]));
 const COMP = Object.fromEntries(COMPONENTS.map(c => [c.id, c]));
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 
-const state = { src: 'f', visible: new Set(HARNESSES.map(h => h.id)), query: '', sel: null, hover: null };
+const state = { tab: 'wires', layers: new Set(PLAYERS.map(l => l.id)), src: 'f', visible: new Set(HARNESSES.map(h => h.id)), query: '', sel: null, hover: null };
 try { const s = localStorage.getItem('niva2131-src'); if (SOURCES.some(x => x.id === s)) state.src = s; } catch {}
+try { const l = JSON.parse(localStorage.getItem('niva2131-layers')); if (Array.isArray(l)) state.layers = new Set(l); } catch {}
+const saveLayers = () => { try { localStorage.setItem('niva2131-layers', JSON.stringify([...state.layers])); } catch {} };
 
 // ---------- Цвета ----------
 const parseColor = code => code === '?' ? ['?'] : (code.match(/Кч|[БЧКЗГСЖОРФ]/g) || ['?']);
@@ -350,6 +369,36 @@ COMPONENTS.forEach(c => {
   const el = document.createElement('div'); el.className = 'lbl'; el.textContent = c.name.replace(/ \(.+\)/, '');
   const lab = new CSS2DObject(el); lab.position.set(0, Math.max(c.size[1], 0.03) / 2 + 0.03, 0); m.add(lab);
 });
+// ---------- Запчасти: 3D-метки по слоям ----------
+const partGroups = {}, partMeshes = [];
+PLAYERS.filter(l => l.id !== 'elec').forEach(l => { partGroups[l.id] = new THREE.Group(); scene.add(partGroups[l.id]); });
+partGroups.elec = compGroup;
+function partGeo(p) {
+  const [a, b, c] = p.size;
+  switch (p.shape) {
+    case 'cylx': { const g = new THREE.CylinderGeometry(Math.max(b, c) / 2, Math.max(b, c) / 2, a, 20); g.rotateZ(Math.PI / 2); return g; }
+    case 'cyly': return new THREE.CylinderGeometry(Math.max(a, c) / 2, Math.max(a, c) / 2, b, 20);
+    case 'cylz': { const g = new THREE.CylinderGeometry(Math.max(a, b) / 2, Math.max(a, b) / 2, c, 24); g.rotateX(Math.PI / 2); return g; }
+    case 'sph': return new THREE.SphereGeometry(Math.max(a, b, c) / 2, 18, 12);
+    default: return new THREE.BoxGeometry(Math.max(a, 0.012), Math.max(b, 0.012), Math.max(c, 0.012));
+  }
+}
+PARTS.forEach(p => {
+  const col = new THREE.Color(PLMAP[p.layer].color);
+  const mat = new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(0), transparent: true, opacity: 0.09, depthWrite: false, roughness: 0.6 });
+  const geo = partGeo(p), m = new THREE.Mesh(geo, mat);
+  m.position.set(...p.pos);
+  m.userData = { type: 'part', id: p.id, vol: p.size[0] * p.size[1] * p.size[2] };
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.4 }));
+  m.add(edges); m.userData.edges = edges;
+  partGroups[p.layer].add(m); partMeshes.push(m); p.mesh = m;
+});
+compMeshes.forEach(m => { const c = m.geometry.parameters; m.userData.vol = c.width * c.height * c.depth; });
+function applyLayerVisibility() {
+  PLAYERS.forEach(l => { partGroups[l.id].visible = state.layers.has(l.id); });
+  const pb = document.querySelector('#tParts'); if (pb) pb.setAttribute('aria-pressed', state.layers.size > 0);
+  const cb = document.querySelector('#tComp'); if (cb) cb.setAttribute('aria-pressed', state.layers.has('elec'));
+}
 const placeComponents = () => compMeshes.forEach(m => m.position.set(...nodePos(m.userData.id)));
 
 // ---------- Провода ----------
@@ -399,6 +448,13 @@ function matches(w) {
   if (/^\d+$/.test(q)) return String(w.pin) === q;
   return [w.name, w.circuit.name, w.color, colorName(w.color), w.from, w.to, HMAP[w.circuit.h].name, w.pin ? 'конт ' + w.pin : ''].join(' ').toLowerCase().includes(q);
 }
+function partMatches(p) {
+  const q = state.query.trim().toLowerCase();
+  if (!q) return true;
+  return [p.name, p.desc, p.loc, p.check, p.tips, PLMAP[p.layer].name, PLMAP[p.layer].code].join(' ').toLowerCase().includes(q);
+}
+const compAsPart = c => ({ ...c, layer: 'elec', kind: 'comp', loc: '', check: '', tips: '' });
+const allParts = () => [...PARTS, ...COMPONENTS.map(compAsPart)];
 const wireVisible = w => state.visible.has(w.circuit.h) && matches(w);
 function applyStyles() {
   const sel = state.sel;
@@ -421,6 +477,18 @@ function applyStyles() {
     m.material.emissive.set(isSel ? 0xf2a531 : t ? 0x7a5210 : 0x000000);
     m.material.opacity = sel && !isSel && !t ? 0.3 : 0.9;
   });
+  const q = state.query.trim();
+  partMeshes.forEach(m => {
+    const p = PMAP[m.userData.id], isSel = sel?.type === 'part' && sel.id === p.id, hov = state.hoverPart === p.id;
+    const found = q && partMatches(p);
+    m.visible = !q || found || isSel;
+    let op = 0.09, eo = 0.4, em = 0x000000;
+    if (sel && !isSel) { op = 0.04; eo = 0.15; }
+    if (found) { op = 0.22; eo = 0.75; }
+    if (hov) { op = 0.32; eo = 0.95; }
+    if (isSel) { op = 0.5; eo = 1; em = 0x7a5210; }
+    m.material.opacity = op; m.material.emissive.set(em); m.userData.edges.material.opacity = eo;
+  });
 }
 
 // ---------- Боковая панель ----------
@@ -433,14 +501,41 @@ function renderHarnesses() {
     <div><b><span class="dot" style="background:${h.color}"></span>${h.name}</b><small>${h.sub}</small></div>
     <span class="cnt">${WIRES.filter(w => w.circuit.h === h.id).length}</span></label>`).join('');
 }
+function renderLayers() {
+  const all = allParts();
+  $('#layerList').innerHTML = PLAYERS.map(l => `<label class="h-row"><input type="checkbox" data-l="${l.id}" ${state.layers.has(l.id) ? 'checked' : ''}>
+    <div><b><span class="dot" style="background:${l.color}"></span>${l.name}</b><small>группа каталога ${l.code}</small></div>
+    <span class="cnt">${all.filter(p => p.layer === l.id).length}</span></label>`).join('');
+}
+function renderTabs() {
+  document.querySelectorAll('[data-stab]').forEach(b => b.setAttribute('aria-selected', b.dataset.stab === state.tab));
+  $('#harnessList').hidden = state.tab !== 'wires';
+  $('#layerBox').hidden = state.tab !== 'parts';
+  $('#search').placeholder = state.tab === 'wires' ? 'Поиск: ДПКВ, стоп, ГЧ, 48…' : 'Поиск: амортизатор, помпа, ступица…';
+}
 function renderList() {
+  if (state.tab === 'parts') return renderPartList();
+  const q = state.query.trim(), otherN = q ? allParts().filter(partMatches).length : 0;
   const html = HARNESSES.filter(h => state.visible.has(h.id)).map(h => {
     const items = WIRES.filter(w => w.circuit.h === h.id && matches(w));
     if (!items.length) return '';
     return `<div class="wl-group">${h.name} · ${h.cat}</div>` + items.map(w => `<button class="wl-item ${state.sel?.id === w.id ? 'sel' : ''}" data-w="${w.id}" title="${esc(w.circuit.name + ': ' + w.name)}">
       ${swatch(w.color)}<span>${w.circuit.wires.length > 1 ? `<b style="font-weight:500">${esc(w.circuit.name)}</b> · ${esc(w.name)}` : esc(w.circuit.name)}</span><span class="pin">${w.pin ? '#' + w.pin : ''}</span></button>`).join('');
   }).join('');
-  $('#wireList').innerHTML = html || '<p style="padding:16px;color:var(--muted)">Ничего не найдено. Измените запрос или включите жгуты выше.</p>';
+  $('#wireList').innerHTML = (otherN ? `<button class="other-hit" data-stab="parts">В запчастях найдено: ${otherN} — показать</button>` : '') + (html || '<p style="padding:16px;color:var(--muted)">Проводов не найдено. Измените запрос или включите жгуты выше.</p>');
+}
+function renderPartList() {
+  const q = state.query.trim(), otherN = q ? WIRES.filter(matches).length : 0;
+  const all = allParts();
+  const html = PLAYERS.filter(l => state.layers.has(l.id) || q).map(l => {
+    const items = all.filter(p => p.layer === l.id && partMatches(p));
+    if (!items.length) return '';
+    return `<div class="wl-group">${l.name} · ${l.code}</div>` + items.map(p => {
+      const key = p.kind === 'comp' ? 'data-c' : 'data-p', on = state.sel && state.sel.id === p.id && (state.sel.type === (p.kind === 'comp' ? 'comp' : 'part'));
+      return `<button class="wl-item ${on ? 'sel' : ''}" ${key}="${p.id}"><i class="pdot" style="background:${l.color}"></i><span>${esc(p.name)}</span><span></span></button>`;
+    }).join('');
+  }).join('');
+  $('#wireList').innerHTML = (otherN ? `<button class="other-hit" data-stab="wires">В проводах найдено: ${otherN} — показать</button>` : '') + (html || '<p style="padding:16px;color:var(--muted)">Ничего не найдено. Измените запрос или включите слои выше.</p>');
 }
 
 // ---------- Карточка ----------
@@ -452,6 +547,7 @@ function renderDrawer() {
   if (!sel) { document.body.classList.remove('sheet-open'); drawer.style.height = ''; drawer.classList.remove('collapsed'); }
   if (!sel) return renderIntro();
   if (sel.type === 'comp') return renderComp(COMP[sel.id]);
+  if (sel.type === 'part') return renderPart(PMAP[sel.id]);
   const w = WMAP[sel.id], c = w.circuit, h = HMAP[c.h], src = SOURCES.find(s => s.id === state.src);
   drawer.innerHTML = `<div class="grab" data-grab="drawer"></div><div class="card">
     <div>
@@ -488,6 +584,25 @@ function renderComp(c) {
     ${c.ref ? `<section><h3>Источники</h3>${refList(c.ref)}</section>` : ''}
   </div>`;
 }
+function renderPart(p) {
+  const l = PLMAP[p.layer];
+  const near = COMPONENTS.map(c => ({ c, d: Math.hypot(...nodePos(c.id).map((v, i) => v - p.pos[i])) })).filter(x => x.d < Math.max(0.25, Math.max(...p.size) * 0.7)).sort((a, b) => a.d - b.d).slice(0, 6);
+  const same = PARTS.filter(x => x.layer === p.layer && x.id !== p.id && x.name.split(' — ')[0] === p.name.split(' — ')[0]);
+  drawer.innerHTML = `<div class="grab" data-grab="drawer"></div><div class="card">
+    <div>
+      <div class="eyebrow"><span class="chip"><span class="dot" style="background:${l.color};margin:0"></span>${l.name}</span><span>группа ${l.code}</span><button class="close" data-close aria-label="Закрыть">×</button></div>
+      <h2>${esc(p.name)}</h2>
+    </div>
+    ${p.loc ? `<section><h3>Где находится</h3><p>${esc(p.loc)}</p></section>` : ''}
+    <section><h3>Что это</h3><p>${esc(p.desc)}</p></section>
+    ${p.check ? `<section><h3>Проверка</h3><p>${esc(p.check)}</p></section>` : ''}
+    ${p.tips ? `<section><h3>При замене</h3><p>${esc(p.tips)}</p></section>` : ''}
+    ${same.length ? `<section><h3>Такие же детали</h3><div class="siblings">${same.map(x => `<button class="wl-item" data-p="${x.id}"><i class="pdot" style="background:${l.color}"></i><span>${esc(x.name)}</span><span></span></button>`).join('')}</div></section>` : ''}
+    ${near.length ? `<section><h3>Электрика рядом</h3><div class="actions">${near.map(({ c }) => `<button class="chip" data-c="${c.id}">${esc(c.name)}</button>`).join('')}</div></section>` : ''}
+    <div class="actions"><button class="btn primary" data-fly>Показать на модели</button><button class="btn" data-onlylayer="${l.id}">Только слой «${esc(l.name)}»</button></div>
+    <div class="warnbox">Место на модели — по компоновке Нивы 2131; метка показывает зону детали, а не её точную форму.</div>
+  </div>`;
+}
 function renderIntro() {
   const src = SOURCES.find(s => s.id === state.src);
   const used = [...new Set(WIRES.flatMap(w => parseColor(w.color)))].filter(k => k !== '?');
@@ -496,6 +611,7 @@ function renderIntro() {
     <ol>
       <li>Крутите модель левой кнопкой мыши, колесом приближайте, правой кнопкой сдвигайте. Ползунок «Кузов» меняет прозрачность.</li>
       <li>Нажмите на провод или узел: откроются цвет, сечение, контакт ЭБУ, трасса, проверка и источники.</li>
+      <li>Вкладка «Запчасти» слева — ${PARTS.length + COMPONENTS.length} деталей по ${PLAYERS.length} слоям (системам автомобиля). Слои включаются и выключаются, поиск ищет по названию, описанию и месту.</li>
       <li>Слева выберите источник данных. Источники расходятся в месте блока ЭСУД и в схеме вентиляторов.</li>
       <li>Поиск понимает номер контакта ЭБУ: введите «48» — найдётся ДПКВ. Раскладка всех фишек — кнопка «Разъёмы» вверху.</li>
       <li>На телефоне и планшете: один палец вращает, два пальца приближают и сдвигают, тап по проводу открывает описание, двойной тап — показать провод крупно.</li>
@@ -539,6 +655,7 @@ function select(sel, { fly = false } = {}) {
   state.sel = sel;
   if (!sel && state.isolate) { state.isolate = null; state.visible = new Set(state.savedVisible || HARNESSES.map(h => h.id)); renderHarnesses(); }
   applyStyles(); renderDrawer(); renderList(); updateViewOffset();
+  if (sel?.type === 'part' && !state.layers.has(PMAP[sel.id].layer)) { state.layers.add(PMAP[sel.id].layer); saveLayers(); applyLayerVisibility(); renderLayers(); }
   if (sel) document.querySelector('#wireList .wl-item.sel')?.scrollIntoView({ block: 'nearest' });
   if (sel && fly) flyTo(sel);
   if (sel && isMobile()) { setMenu(false); openSheet(); }
@@ -546,6 +663,7 @@ function select(sel, { fly = false } = {}) {
 function boundsOf(sel) {
   const b = new THREE.Box3();
   if (sel.type === 'wire') b.setFromObject(WMAP[sel.id].mesh);
+  else if (sel.type === 'part') b.setFromObject(PMAP[sel.id].mesh);
   else { b.setFromObject(compMeshes.find(m => m.userData.id === sel.id)); connectedWires(sel.id).forEach(w => b.expandByPoint(w.curve.getPoint(w.circuit.pts[0] === sel.id ? 0.15 : 0.85))); }
   return b;
 }
@@ -565,8 +683,12 @@ document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { const 
 
 // ---------- События ----------
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-w],[data-c],[data-close],[data-fly],[data-iso],[data-tab],[data-conn]');
+  const t = e.target.closest('[data-w],[data-c],[data-p],[data-close],[data-fly],[data-iso],[data-tab],[data-conn],[data-stab],[data-layers],[data-onlylayer]');
   if (!t) return;
+  if (t.dataset.stab) { state.tab = t.dataset.stab; renderTabs(); renderList(); return; }
+  if (t.dataset.layers) { state.layers = new Set(t.dataset.layers === 'all' ? PLAYERS.map(l => l.id) : []); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); return; }
+  if (t.dataset.onlylayer) { state.layers = new Set([t.dataset.onlylayer]); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); return; }
+  if (t.dataset.p) { select({ type: 'part', id: t.dataset.p }, { fly: true }); return; }
   if (t.dataset.tab) { connTab = t.dataset.tab; renderPins(); return; }
   if (t.dataset.conn) { openConn(t.dataset.conn); return; }
   if (t.dataset.w) { if ('pinjump' in t.dataset) $('#pinDlg').close(); select({ type: 'wire', id: t.dataset.w }, { fly: !!t.closest('#wireList') || 'pinjump' in t.dataset }); }
@@ -595,7 +717,14 @@ $('#opacity').addEventListener('input', e => setBodyOpacity(+e.target.value));
 const toggle = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
 toggle('#tMech', on => car.groups.mech.visible = on);
 toggle('#tInt', on => car.groups.interior.visible = on);
-toggle('#tComp', on => compGroup.visible = on);
+toggle('#tComp', on => { on ? state.layers.add('elec') : state.layers.delete('elec'); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
+toggle('#tWires', on => { state.visible = new Set(on ? HARNESSES.map(h => h.id) : []); state.isolate = null; renderHarnesses(); renderList(); applyStyles(); });
+toggle('#tParts', on => { state.layers = new Set(on ? PLAYERS.map(l => l.id) : []); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
+$('#layerList').addEventListener('change', e => {
+  const l = e.target.dataset.l; if (!l) return;
+  e.target.checked ? state.layers.add(l) : state.layers.delete(l);
+  saveLayers(); applyLayerVisibility(); renderList();
+});
 toggle('#tLabels', on => stage.classList.toggle('no-labels', !on));
 // ---------- Телефонная раскладка: левое меню ----------
 const mq = matchMedia('(max-width: 820px)');
@@ -635,10 +764,15 @@ function hit(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   mouse.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(mouse, camera);
-  const hits = ray.intersectObjects([...pickMeshes.filter(m => m.visible), ...(compGroup.visible ? compMeshes : [])], false);
+  const parts = partMeshes.filter(m => m.visible && m.parent.visible);
+  const hits = ray.intersectObjects([...pickMeshes.filter(m => m.visible), ...(compGroup.visible ? compMeshes : []), ...parts], false);
   if (!hits.length) return null;
   const wh = hits.find(h => h.object.userData.type === 'wire');
-  return (wh && wh.distance - hits[0].distance < 0.15 ? wh : hits[0]).object.userData;
+  if (wh && wh.distance - hits[0].distance < 0.15) return wh.object.userData;
+  // Среди деталей выбираем самую маленькую из тех, что под курсором рядом: крупные панели не перекрывают мелкие узлы
+  const near = hits.filter(h => h.distance - hits[0].distance < 0.8 && h.object.userData.type !== 'wire');
+  near.sort((a, b) => (a.object.userData.vol ?? 1) - (b.object.userData.vol ?? 1));
+  return (near[0] || hits[0]).object.userData;
 }
 // Касания: тап — выбрать, двойной тап — показать крупно (или сбросить вид), долгое нажатие — подсказка
 controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
@@ -657,6 +791,7 @@ function showTip(h, x, y) {
   const r = stage.getBoundingClientRect();
   if (!h) { tip.hidden = true; return; }
   if (h.type === 'wire') { const w = WMAP[h.id]; tip.innerHTML = `${esc(w.circuit.wires.length > 1 ? w.circuit.name + ' · ' + w.name : w.name)}<small>${w.color === '?' ? 'цвет не подтверждён' : w.color + ' · ' + colorName(w.color)} · ${w.section}${w.circuit.h === 'hv' ? ' мм' : ' мм²'}${w.pin ? ' · конт. ' + w.pin : ''}</small>`; }
+  else if (h.type === 'part') { const p = PMAP[h.id]; tip.innerHTML = `${esc(p.name)}<small>${esc(PLMAP[p.layer].name)} · группа ${PLMAP[p.layer].code}</small>`; }
   else tip.innerHTML = `${esc(COMP[h.id].name)}<small>узел · ${connectedWires(h.id).length} проводов</small>`;
   tip.hidden = false; tip.style.left = (x - r.left) + 'px'; tip.style.top = (y - r.top) + 'px';
 }
@@ -786,12 +921,13 @@ renderer.domElement.addEventListener('pointermove', e => {
   cancelAnimationFrame(hoverRaf);
   hoverRaf = requestAnimationFrame(() => {
     const h = hit(e), nh = h?.type === 'wire' ? h.id : null;
-    if (nh !== state.hover) { state.hover = nh; applyStyles(); }
+    const np = h?.type === 'part' ? h.id : null;
+    if (nh !== state.hover || np !== state.hoverPart) { state.hover = nh; state.hoverPart = np; applyStyles(); }
     renderer.domElement.style.cursor = h ? 'pointer' : '';
     showTip(h, e.clientX, e.clientY);
   });
 });
-renderer.domElement.addEventListener('pointerleave', e => { if (e.pointerType !== 'mouse') return; tip.hidden = true; if (state.hover) { state.hover = null; applyStyles(); } });
+renderer.domElement.addEventListener('pointerleave', e => { if (e.pointerType !== 'mouse') return; tip.hidden = true; if (state.hover || state.hoverPart) { state.hover = null; state.hoverPart = null; applyStyles(); } });
 
 // ---------- Цикл ----------
 function resize() {
@@ -827,6 +963,7 @@ renderer.setAnimationLoop(now => {
 
 prepareData(); placeComponents(); buildWires();
 try { if (localStorage.getItem('niva2131-ui-hidden')) document.body.classList.add('ui-hidden'); } catch {}
+applyLayerVisibility(); renderTabs(); renderLayers();
 resize(); renderSources(); renderHarnesses(); renderList(); renderDrawer(); renderPins(); applyStyles();
 $('#loading').remove();
 </script>
