@@ -244,6 +244,7 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <label for="opacity">Кузов <input id="opacity" type="range" min="0" max="1" step="0.01" value="0.3"></label>
           <button id="tMech" aria-pressed="true" title="Двигатель, КПП, мосты, выпуск">Агрегаты</button>
           <button id="tInt" aria-pressed="true" title="Панель, сиденья, пол">Салон</button>
+          <button id="tModel" aria-pressed="true" title="Подробная модель кузова или схематичная" hidden>Подробная</button>
           <button id="tComp" aria-pressed="true" title="Датчики, фары, блоки">Узлы</button>
           <button id="tLabels" aria-pressed="false">Подписи</button>
           <button id="tWires" aria-pressed="true" title="Все жгуты проводов">Провода</button>
@@ -282,6 +283,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildNiva } from './model.js';
 
 const D = window.NIVA;
@@ -314,7 +317,10 @@ const cap = s => s[0].toUpperCase() + s.slice(1);
 
 // ---------- Данные под выбранный источник ----------
 let WIRES = [], WMAP = {}, CIRC = [];
-const nodePos = name => (D.NODE_ALT[state.src]?.[name]) || D.N[name];
+// WARP — пересчёт координат схемы на подробную модель (тождественный, если модели нет)
+let WARP = p => p;
+const SNAP = {};   // узлы, поставленные прямо по детали подробной модели
+const nodePos = name => SNAP[name] || WARP((D.NODE_ALT[state.src]?.[name]) || D.N[name]);
 function expand(path) {
   return path.flatMap(p => typeof p === 'string' && p.startsWith('@') ? expand(D.MACROS[p][state.src] || D.MACROS[p]._) : [p]);
 }
@@ -367,6 +373,136 @@ function setBodyOpacity(v) {
 }
 setBodyOpacity(0.3);
 
+// =====================================================================
+// ---------- Подробная модель (models/niva.glb) — эталон геометрии ----------
+// Модель ставится в своих настоящих размерах (меняются только единицы и оси).
+// Ориентиры снимаются с неё по именам деталей, и по ним пересчитываются
+// все точки проводов, узлы, метки запчастей и схематичные агрегаты.
+// =====================================================================
+// Ориентиры схемы, к которой изначально привязаны данные (метры)
+const SCHEMA = {
+  x: { rearBumper: -2.18, rearFace: -2.09, rearAxle: -1.40, cPillar: -1.16, wsTop: 0.465, wsBase: 0.88, frontAxle: 1.30, frontFace: 1.872, frontBumper: 1.96 },
+  y: { ground: 0, wheel: 0.345, sill: 0.40, belt: 1.11, winTop: 1.555, roof: 1.66 },
+  z: { zero: 0, track: 0.72, half: 0.83 },
+};
+const piecewise = pairs => {
+  pairs = pairs.filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b)).sort((p, q) => p[0] - q[0]);
+  return v => {
+    if (v <= pairs[0][0]) return pairs[0][1] + (v - pairs[0][0]);
+    for (let i = 0; i < pairs.length - 1; i++) { const [a, b] = pairs[i], [c, d] = pairs[i + 1]; if (v <= c) return b + (v - a) * (d - b) / (c - a); }
+    const [a, b] = pairs.at(-1); return b + (v - a);
+  };
+};
+const glb = { root: null, interior: null, anchors: null };
+const MODEL_MAT = {
+  tire: new THREE.MeshStandardMaterial({ color: 0x16191b, roughness: 0.95 }),
+  rim: new THREE.MeshStandardMaterial({ color: 0xb7bec4, metalness: 0.6, roughness: 0.35 }),
+  brake: new THREE.MeshStandardMaterial({ color: 0x7d8186, metalness: 0.8, roughness: 0.45 }),
+  spring: new THREE.MeshStandardMaterial({ color: 0x3b4a58, metalness: 0.5, roughness: 0.5 }),
+  red: new THREE.MeshStandardMaterial({ color: 0xc8212b, emissive: 0x3a0508, roughness: 0.3, transparent: true, opacity: 0.85 }),
+  amber: new THREE.MeshStandardMaterial({ color: 0xf29a1f, emissive: 0x4a2804, roughness: 0.3, transparent: true, opacity: 0.9 }),
+  clear: new THREE.MeshStandardMaterial({ color: 0xeef4f8, emissive: 0x1c2328, roughness: 0.1, transparent: true, opacity: 0.6 }),
+};
+function modelMaterial(n) {
+  if (/tire/.test(n)) return ['wheels', MODEL_MAT.tire];
+  if (/^wheel_.*(brakedisk|caliper)/.test(n)) return ['wheels', MODEL_MAT.brake];
+  if (/^wheel_.*support/.test(n)) return ['wheels', MODEL_MAT.spring];
+  if (/^wheel_/.test(n)) return ['wheels', /nuts/.test(n) ? MAT.chrome : MODEL_MAT.rim];
+  if (/^window_compactor/.test(n)) return ['trim', MAT.plastic];
+  if (/^window_/.test(n)) return ['glass', MAT.glass];
+  if (/^light_/.test(n)) {
+    if (/reflector/.test(n)) return ['trim', MAT.chrome];
+    if (/red|stop_cover/.test(n)) return ['trim', MODEL_MAT.red];
+    if (/orange/.test(n)) return ['trim', MODEL_MAT.amber];
+    return ['trim', MODEL_MAT.clear];
+  }
+  if (/^interior/.test(n)) return ['interior', MAT.trimIn];
+  if (/^logo|handle|exhaust|spray/.test(n)) return ['trim', MAT.chrome];
+  if (/bumper|grid|mudguard|fastener|wiper|mirror/.test(n)) return ['trim', MAT.plastic];
+  return ['body', MAT.paint];
+}
+async function loadDetailedModel() {
+  let gltf;
+  try { gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync('models/niva.glb'); } catch { return false; }
+  const model = gltf.scene; model.updateMatrixWorld(true);
+  const raw = name => { const o = model.getObjectByName(name); return o ? new THREE.Box3().setFromObject(o) : null; };
+  const ctr = b => b.getCenter(new THREE.Vector3());
+  const fl = raw('wheel_front_left_rim'), rl = raw('wheel_rear_left_rim'), tire = raw('wheel_front_left_tire');
+  if (!fl || !rl || !tire) return false;
+  const F = ctr(fl), R = ctr(rl);
+  // Единицы: по базе определяем, см это или мм/м — масштаб только переводит единицы, пропорции модели не трогаются
+  const wbRaw = F.distanceTo(R), s = wbRaw > 1000 ? 0.001 : wbRaw > 100 ? 0.01 : wbRaw > 10 ? 0.1 : 1;
+  const dirF = Math.sign(F.z - R.z) || 1, sL = Math.sign(F.x) || 1, ground = tire.min.y;
+  // Наши оси: x — вперёд, y — вверх от земли, z — вправо. Передняя ось ставится на x = 1.30 (сдвиг)
+  const tx = SCHEMA.x.frontAxle - dirF * s * F.z;
+  const wrap = new THREE.Group();
+  wrap.matrixAutoUpdate = false;
+  wrap.matrix.set(0, 0, dirF * s, tx, 0, s, 0, -s * ground, -sL * s, 0, 0, 0, 0, 0, 0, 1);
+  wrap.add(model); scene.add(wrap); wrap.updateMatrixWorld(true);
+  const B = name => { const o = model.getObjectByName(name); return o ? new THREE.Box3().setFromObject(o) : null; };
+  const g = (name, f) => { const b = B(name); return b ? f(b) : NaN; };
+  const A = {
+    x: { rearBumper: g('detail_bumper_rear', b => b.min.x), rearFace: g('body', b => b.min.x), rearAxle: g('wheel_rear_left_rim', b => ctr(b).x),
+      cPillar: g('window_compactor_side', b => b.max.x), wsTop: g('window_front', b => b.min.x), wsBase: g('window_front', b => b.max.x),
+      frontAxle: g('wheel_front_left_rim', b => ctr(b).x), frontFace: g('body', b => b.max.x), frontBumper: g('detail_bumper_front', b => b.max.x) },
+    y: { ground: 0, wheel: g('wheel_front_left_rim', b => ctr(b).y), sill: g('body_parts_sill', b => b.min.y), belt: g('window_side', b => b.min.y),
+      winTop: g('window_side', b => b.max.y), roof: g('body', b => b.max.y) },
+    z: { zero: 0, track: g('wheel_front_left_rim', b => Math.abs(ctr(b).z)), half: g('body', b => Math.max(Math.abs(b.min.z), Math.abs(b.max.z))) },
+  };
+  glb.anchors = A;
+  // Узлы, у которых в модели есть своя деталь, ставим прямо по ней (слева/справа — по знаку z)
+  const sideBox = (name, side) => {
+    const o = model.getObjectByName(name); if (!o) return null;
+    const b = new THREE.Box3(), v = new THREE.Vector3();
+    o.traverse(m => { if (!m.isMesh) return; const p = m.geometry.attributes.position;
+      for (let i = 0; i < p.count; i += 3) { v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); if (!side || Math.sign(v.z) === side) b.expandByPoint(v); } });
+    return b.isEmpty() ? null : b;
+  };
+  const put = (id, name, side, fn = b => ctr(b).toArray()) => { const b = sideBox(name, side); if (b) SNAP[id] = fn(b); };
+  put('HL_L', 'light_front_reflector', -1, b => [b.max.x - 0.02, ctr(b).y, ctr(b).z]); put('HL_R', 'light_front_reflector', 1, b => [b.max.x - 0.02, ctr(b).y, ctr(b).z]);
+  put('TS_L', 'light_front_top_cover_orange', -1); put('TS_R', 'light_front_top_cover_orange', 1);
+  put('REP_L', 'light_side', -1); put('REP_R', 'light_side', 1);
+  put('RL_L', 'light_rear', -1, b => [b.min.x + 0.03, ctr(b).y, ctr(b).z]); put('RL_R', 'light_rear', 1, b => [b.min.x + 0.03, ctr(b).y, ctr(b).z]);
+  put('STOP3', 'light_stop', 0);
+  const fx = piecewise(Object.keys(SCHEMA.x).map(k => [SCHEMA.x[k], A.x[k]]));
+  const fy = piecewise(Object.keys(SCHEMA.y).map(k => [SCHEMA.y[k], A.y[k]]));
+  const fz = piecewise(Object.keys(SCHEMA.z).map(k => [SCHEMA.z[k], A.z[k]]));
+  WARP = ([x, y, z]) => [fx(x), fy(y), Math.sign(z) * fz(Math.abs(z))];
+  // Материалы и группы по именам деталей
+  const groups = { body: new THREE.Group(), glass: new THREE.Group(), trim: new THREE.Group(), wheels: new THREE.Group(), interior: new THREE.Group() };
+  const meshes = [];
+  model.traverse(o => { if (o.isMesh) meshes.push(o); });
+  meshes.forEach(o => {
+    let n = o.name, p = o; while (p && !/[a-z]/.test(n || '')) { p = p.parent; n = p?.name; }
+    const [grp, mat] = modelMaterial(n || '');
+    o.material = mat; o.userData.part = n; o.userData.grp = grp;
+    if (mat === MAT.paint) o.renderOrder = 10; if (mat === MAT.glass) o.renderOrder = 11;
+    if (n === 'body' || n === 'body_parts_rear_wing') o.add(new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 32), MAT.edge));
+  });
+  glb.root = wrap; glb.meshes = meshes;
+  return true;
+}
+const HAS_MODEL = await loadDetailedModel();
+// Схематичная модель натягивается на подробную тем же пересчётом
+if (HAS_MODEL) {
+  const done = new Set();
+  car.root.traverse(o => {
+    const g = o.geometry; if (!g || done.has(g)) return; done.add(g);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const [x, y, z] = WARP([p.getX(i), p.getY(i), p.getZ(i)]); p.setXYZ(i, x, y, z); }
+    p.needsUpdate = true; g.computeBoundingSphere(); g.computeBoundingBox();
+  });
+}
+state.detailed = HAS_MODEL;
+function applyModelMode() {
+  const det = HAS_MODEL && state.detailed;
+  if (glb.root) glb.root.visible = det;
+  ['body', 'trim', 'glass', 'wheels'].forEach(k => car.groups[k].visible = !det);
+  const intOn = $('#tInt')?.getAttribute('aria-pressed') !== 'false';
+  car.groups.interior.visible = intOn && !det;
+  glb.meshes?.forEach(m => { if (m.userData.grp === 'interior') m.visible = intOn; });
+}
+
 // ---------- Узлы ----------
 const compGroup = new THREE.Group(); scene.add(compGroup);
 const KIND_COLOR = { power: 0xd8645f, cabin: 0xb39cf2, light: 0xe9d9a6, engine: 0x9fb0bd, rear: 0x86b3e8, body: 0xc3d36a };
@@ -397,6 +533,7 @@ PARTS.forEach(p => {
   const col = new THREE.Color(PLMAP[p.layer].color);
   const mat = new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(0), transparent: true, opacity: 0.09, depthWrite: false, roughness: 0.6 });
   const geo = partGeo(p), m = new THREE.Mesh(geo, mat);
+  p.pos = WARP(p.pos);
   m.position.set(...p.pos);
   m.userData = { type: 'part', id: p.id, vol: p.size[0] * p.size[1] * p.size[2] };
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.4 }));
@@ -412,7 +549,7 @@ function applyLayerVisibility() {
 const placeComponents = () => compMeshes.forEach(m => m.position.set(...nodePos(m.userData.id)));
 
 // ---------- Провода ----------
-const V3 = p => new THREE.Vector3(...(typeof p === 'string' ? nodePos(p) : p));
+const V3 = p => new THREE.Vector3(...(typeof p === 'string' ? nodePos(p) : WARP(p)));
 const texCache = {};
 function wireTexture(code) {
   if (texCache[code]) return texCache[code];
@@ -776,7 +913,8 @@ $('#search').addEventListener('input', e => { state.query = e.target.value; rend
 $('#opacity').addEventListener('input', e => setBodyOpacity(+e.target.value));
 const toggle = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
 toggle('#tMech', on => car.groups.mech.visible = on);
-toggle('#tInt', on => car.groups.interior.visible = on);
+toggle('#tInt', () => applyModelMode());
+toggle('#tModel', on => { state.detailed = on; applyModelMode(); });
 toggle('#tComp', on => { on ? state.layers.add('elec') : state.layers.delete('elec'); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
 toggle('#tWires', on => { state.visible = new Set(on ? HARNESSES.map(h => h.id) : []); state.isolate = null; renderHarnesses(); renderList(); applyStyles(); });
 toggle('#tBounds', on => { state.bounds = on; try { localStorage.setItem('niva2131-bounds', on ? '1' : '0'); } catch {} applyStyles(); });
@@ -1025,6 +1163,7 @@ renderer.setAnimationLoop(now => {
 prepareData(); placeComponents(); buildWires();
 try { if (localStorage.getItem('niva2131-ui-hidden')) document.body.classList.add('ui-hidden'); } catch {}
 applyLayerVisibility(); renderTabs(); renderLayers();
+$('#tModel').hidden = !HAS_MODEL; applyModelMode();
 $('#tBounds').setAttribute('aria-pressed', state.bounds);
 resize(); renderSources(); renderHarnesses(); renderList(); renderDrawer(); renderPins(); applyStyles();
 $('#loading').remove();

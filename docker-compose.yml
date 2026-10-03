@@ -5,4 +5,7 @@ services:
     container_name: x-car
     ports:
       - "1865:1865"
+    volumes:
+      # Подробная модель кузова (не хранится в git): положите файл в ./models/niva.glb
+      - ./models:/usr/share/nginx/html/models:ro
     restart: unless-stopped
