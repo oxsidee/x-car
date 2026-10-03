@@ -248,6 +248,7 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <button id="tComp" aria-pressed="true" title="Датчики, фары, блоки">Узлы</button>
           <button id="tLabels" aria-pressed="false">Подписи</button>
           <button id="tWires" aria-pressed="true" title="Все жгуты проводов">Провода</button>
+          <button id="tSleeves" aria-pressed="true" title="Чёрная обмотка жгутов между развилками">Обмотка</button>
           <button id="tParts" aria-pressed="true" title="Все слои запчастей">Запчасти</button>
           <button id="tBounds" aria-pressed="true" title="Контуры и заливка меток запчастей">Границы</button>
         </div>
@@ -307,6 +308,8 @@ const state = { bounds: true, tab: 'wires', layers: new Set(PLAYERS.map(l => l.i
 try { const s = localStorage.getItem('niva2131-src'); if (SOURCES.some(x => x.id === s)) state.src = s; } catch {}
 try { const l = JSON.parse(localStorage.getItem('niva2131-layers')); if (Array.isArray(l)) state.layers = new Set(l); } catch {}
 try { if (localStorage.getItem('niva2131-bounds') === '0') state.bounds = false; } catch {}
+state.sleeves = true;
+try { if (localStorage.getItem('niva2131-sleeves') === '0') state.sleeves = false; } catch {}
 const saveLayers = () => { try { localStorage.setItem('niva2131-layers', JSON.stringify([...state.layers])); } catch {} };
 
 // ---------- Цвета ----------
@@ -968,7 +971,7 @@ function applyStyles() {
     if (state.hover === w.id && !(sel?.type === 'wire' && sel.id === w.id)) { em = 0x5a6670; op = Math.max(op, 0.9); }
     const m = w.mesh.material; m.opacity = op; m.depthWrite = op > 0.5; m.emissive.set(em); m.emissiveIntensity = ei;
   });
-  sleeves.forEach(m => { const ws = m.userData.wires; m.visible = ws.some(wireVisible); const faded = sel || state.query.trim() || ws.some(w => w.id === state.hover); m.material.opacity = faded ? 0.15 : 0.88; m.material.depthWrite = !faded; });
+  sleeves.forEach(m => { const ws = m.userData.wires; m.visible = state.sleeves && ws.some(wireVisible); const faded = sel || state.query.trim() || ws.some(w => w.id === state.hover); m.material.opacity = faded ? 0.15 : 0.88; m.material.depthWrite = !faded; });
   const touched = sel?.type === 'wire' && WMAP[sel.id] ? endsOf(WMAP[sel.id].circuit) : [];
   compMeshes.forEach(m => {
     const id = m.userData.id, isSel = sel?.type === 'comp' && sel.id === id, t = touched.includes(id);
@@ -1233,6 +1236,7 @@ toggle('#tMech', on => aggregates.visible = on);
 toggle('#tInt', () => applyModelMode());
 toggle('#tComp', on => { on ? state.layers.add('elec') : state.layers.delete('elec'); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
 toggle('#tWires', on => { state.visible = new Set(on ? HARNESSES.map(h => h.id) : []); state.isolate = null; renderHarnesses(); renderList(); applyStyles(); });
+toggle('#tSleeves', on => { state.sleeves = on; try { localStorage.setItem('niva2131-sleeves', on ? '1' : '0'); } catch {} applyStyles(); });
 toggle('#tBounds', on => { state.bounds = on; try { localStorage.setItem('niva2131-bounds', on ? '1' : '0'); } catch {} applyStyles(); });
 toggle('#tParts', on => { state.layers = new Set(on ? PLAYERS.map(l => l.id) : []); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
 $('#layerList').addEventListener('change', e => {
@@ -1485,6 +1489,7 @@ try { if (localStorage.getItem('niva2131-ui-hidden')) document.body.classList.ad
 applyLayerVisibility(); renderTabs(); renderLayers();
 applyModelMode();
 $('#tBounds').setAttribute('aria-pressed', state.bounds);
+$('#tSleeves').setAttribute('aria-pressed', state.sleeves);
 resize(); renderSources(); renderHarnesses(); renderList(); renderDrawer(); renderPins(); applyStyles();
 $('#loading').remove();
 </script>
