@@ -13,7 +13,8 @@ const MX = x => { for (let i = 0; i < ANCH.length - 1; i++) { const [a, b] = ANC
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
 export function buildNiva() {
-  const groups = { body: new THREE.Group(), trim: new THREE.Group(), glass: new THREE.Group(), interior: new THREE.Group(), mech: new THREE.Group(), wheels: new THREE.Group() };
+  const groups = { body: new THREE.Group(), trim: new THREE.Group(), glass: new THREE.Group(), interior: new THREE.Group(), mech: new THREE.Group(), wheels: new THREE.Group(), dup: new THREE.Group() };
+  // dup — агрегаты, которые есть в подробной модели (пружины, рычаги, диски, балка, глушитель, пороги): при ней скрываются
   const root = new THREE.Group();
   Object.values(groups).forEach(g => root.add(g));
 
@@ -247,13 +248,13 @@ export function buildNiva() {
   br(M, [0.46, 0.40, 0.12], [1.30, 0.36, 0.12], 0.024, mech);
   bar(M, [MX(0.24), 0.40, 0.06], [RA, 0.36, 0.05], 0.03, mech);
   rbox(M, [0.22, 0.20, 0.22], [FA, 0.33, 0.12], mech, 0.04);
-  bar(M, [RA, WR, -0.66], [RA, WR, 0.66], 0.04, mech);
+  bar(groups.dup, [RA, WR, -0.66], [RA, WR, 0.66], 0.04, mech);
   add(M, new THREE.SphereGeometry(0.12, 16, 12), mech, [RA, WR, 0.05]);
   [-1, 1].forEach(s => bar(M, [FA, 0.36, 0.12], [FA, WR, s * 0.64], 0.025, mech));
   br(M, [1.04, 0.56, 0.30], [0.80, 0.34, 0.36], 0.026, mech); br(M, [0.80, 0.34, 0.36], [-0.40, 0.30, 0.42], 0.026, mech);
   add(M, new THREE.CylinderGeometry(0.06, 0.06, 0.40, 16), mech, [MX(-0.20), 0.30, 0.42], [0, 0, Math.PI / 2]);
   br(M, [-0.40, 0.30, 0.42], [-1.55, 0.30, 0.48], 0.026, mech);
-  rbox(M, [0.40, 0.16, 0.26], [-1.78, 0.32, 0.46], mech, 0.04);
+  rbox(groups.dup, [0.40, 0.16, 0.26], [-1.78, 0.32, 0.46], mech, 0.04);
   rbox(M, [0.46, 0.20, 0.70], [-1.62, 0.52, 0.10], mech, 0.04);
 
 
@@ -355,24 +356,24 @@ export function buildNiva() {
   // =====================================================================
   // ---------- Шасси ----------
   // =====================================================================
-  const CH = groups.mech;
+  const CH = groups.mech, DUP = groups.dup;
   // Лонжероны и поперечина
   [-1, 1].forEach(s => {
     rbox(CH, [0.92, 0.09, 0.07], [1.40, 0.40, s * 0.40], mech, 0.02);
     rbox(CH, [1.00, 0.08, 0.07], [-1.55, 0.40, s * 0.50], mech, 0.02);
-    rbox(CH, [2.10, 0.06, 0.10], [-0.10, 0.38, s * 0.74], mech, 0.02);                          // пороги
+    rbox(DUP, [2.10, 0.06, 0.10], [-0.10, 0.38, s * 0.74], mech, 0.02);                          // пороги
   });
-  rbox(CH, [0.12, 0.08, 0.86], [1.30, 0.30, 0], mech, 0.02);                                     // поперечина передней подвески
+  rbox(DUP, [0.12, 0.08, 0.86], [1.30, 0.30, 0], mech, 0.02);                                     // поперечина передней подвески
   // Передняя подвеска: рычаги, пружины, амортизаторы, тормоза
   [-1, 1].forEach(s => {
     const z = s;
-    bar(CH, [1.40, 0.30, z * 0.30], [1.30, 0.26, z * 0.58], 0.016, steel); bar(CH, [1.20, 0.30, z * 0.30], [1.30, 0.26, z * 0.58], 0.016, steel);
-    bar(CH, [1.40, 0.56, z * 0.36], [1.30, 0.54, z * 0.57], 0.013, steel); bar(CH, [1.22, 0.56, z * 0.36], [1.30, 0.54, z * 0.57], 0.013, steel);
-    bar(CH, [1.30, 0.25, z * 0.60], [1.30, 0.56, z * 0.60], 0.018, steel);
-    helix(CH, [1.30, 0.32, z * 0.47], 0.62, 0.055, 6, 0.008, spring);
+    bar(DUP, [1.40, 0.30, z * 0.30], [1.30, 0.26, z * 0.58], 0.016, steel); bar(DUP, [1.20, 0.30, z * 0.30], [1.30, 0.26, z * 0.58], 0.016, steel);
+    bar(DUP, [1.40, 0.56, z * 0.36], [1.30, 0.54, z * 0.57], 0.013, steel); bar(DUP, [1.22, 0.56, z * 0.36], [1.30, 0.54, z * 0.57], 0.013, steel);
+    bar(DUP, [1.30, 0.25, z * 0.60], [1.30, 0.56, z * 0.60], 0.018, steel);
+    helix(DUP, [1.30, 0.32, z * 0.47], 0.62, 0.055, 6, 0.008, spring);
     bar(CH, [1.30, 0.30, z * 0.47], [1.30, 0.68, z * 0.47], 0.016, mechDark);
-    disc(CH, [1.30, WR, z * 0.61], 0.125, 0.012, brake);
-    rbox(CH, [0.08, 0.10, 0.05], [1.20, WR + 0.08, z * 0.60], steel, 0.01);
+    disc(DUP, [1.30, WR, z * 0.61], 0.125, 0.012, brake);
+    rbox(DUP, [0.08, 0.10, 0.05], [1.20, WR + 0.08, z * 0.60], steel, 0.01);
     bar(CH, [1.18, 0.33, z * 0.10], [1.22, 0.30, z * 0.58], 0.009, steel);                   // боковые рулевые тяги
   });
   bar(CH, [1.18, 0.33, -0.30], [1.18, 0.33, 0.30], 0.011, steel);                               // средняя тяга
@@ -380,11 +381,11 @@ export function buildNiva() {
   tube(CH, [[1.55, 0.34, -0.58], [1.58, 0.34, -0.3], [1.58, 0.34, 0.3], [1.55, 0.34, 0.58]], 0.009, steel); // стабилизатор
   // Задняя подвеска: пружины, амортизаторы, 4 продольные тяги, поперечная тяга, барабаны
   [-1, 1].forEach(z => {
-    helix(CH, [RA, 0.42, z * 0.48], 0.68, 0.06, 6, 0.009, spring);
+    helix(DUP, [RA, 0.42, z * 0.48], 0.68, 0.06, 6, 0.009, spring);
     bar(CH, [RA - 0.08, 0.34, z * 0.53], [RA + 0.06, 0.70, z * 0.55], 0.015, mechDark);
     bar(CH, [RA, 0.30, z * 0.48], [-0.72, 0.33, z * 0.50], 0.015, steel);
     bar(CH, [RA, 0.44, z * 0.25], [-0.95, 0.42, z * 0.30], 0.013, steel);
-    disc(CH, [RA, WR, z * 0.61], 0.13, 0.06, brake);
+    disc(DUP, [RA, WR, z * 0.61], 0.13, 0.06, brake);
   });
   bar(CH, [RA + 0.02, 0.36, -0.58], [RA + 0.06, 0.50, 0.52], 0.013, steel);
   // Карданы: крестовины
@@ -505,10 +506,10 @@ export function buildNiva() {
   // Рамка радиатора и чашки фар
   xbox(B, [0.04, 0.04, 1.50], [1.80, 0.99, 0], mech); xbox(B, [0.04, 0.04, 1.40], [1.80, 0.50, 0], mech);
   [-1, 1].forEach(s => { xbox(B, [0.04, 0.50, 0.04], [1.80, 0.745, s * 0.40], mech); xbox(B, [0.30, 0.04, 0.04], [1.65, 0.99, s * 0.75], mech);
-    const cup = add(B, new THREE.CylinderGeometry(0.105, 0.09, 0.12, 24, 1, true), mech, [1.80, 0.70, s * 0.57]); cup.rotation.z = Math.PI / 2;
+    const cup = add(groups.dup, new THREE.CylinderGeometry(0.105, 0.09, 0.12, 24, 1, true), mech, [1.80, 0.70, s * 0.57]); cup.rotation.z = Math.PI / 2;
     // Петли капота и брызговики (арки внутри моторного отсека)
     rbox(B, [0.06, 0.05, 0.03], [0.97, 1.10, s * 0.74], steel, 0.01);
-    const arch = add(B, new THREE.CylinderGeometry(AR + 0.03, AR + 0.03, 0.10, 24, 1, true, -Math.PI / 2, Math.PI), mech, [FA, AY, s * 0.62]); arch.rotation.x = Math.PI / 2; arch.rotation.y = Math.PI / 2;
+    const arch = add(groups.dup, new THREE.CylinderGeometry(AR + 0.03, AR + 0.03, 0.10, 24, 1, true, -Math.PI / 2, Math.PI), mech, [FA, AY, s * 0.62]); arch.rotation.x = Math.PI / 2; arch.rotation.y = Math.PI / 2;
     // Подушки двигателя
     rbox(B, [0.08, 0.06, 0.06], [1.43, 0.47, s * 0.22], rubberS, 0.02);
   });
