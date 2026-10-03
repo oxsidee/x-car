@@ -16,6 +16,7 @@
   --side: 330px; --drawer: 410px; --top: 52px;
   color-scheme: dark;
 }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--f-body); overflow: hidden; }
 button, input, select { font: inherit; color: inherit; }
@@ -126,6 +127,13 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .pintable td:first-child { font: 600 13px var(--f-mono); color: var(--accent); width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 .pintable tr.free td { color: var(--muted); }
 .pintable button { background: none; border: 0; padding: 0; color: var(--fg); text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+.shop { display: grid; gap: 8px; }
+.shop input { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+.shop-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.shop-links a { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font-size: 12.5px; text-decoration: none; }
+.shop-links a:hover { border-color: var(--accent); }
+.shop-links a.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.shop small { color: var(--muted); font-size: 11.5px; }
 .stabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
 .stabs button { background: none; border: 0; border-radius: 6px; padding: 8px 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .stabs button[aria-selected="true"] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
@@ -453,6 +461,53 @@ function partMatches(p) {
   if (!q) return true;
   return [p.name, p.desc, p.loc, p.check, p.tips, PLMAP[p.layer].name, PLMAP[p.layer].code].join(' ').toLowerCase().includes(q);
 }
+// ---------- Поиск запчастей в российских магазинах и каталогах ----------
+const enc = encodeURIComponent;
+const SHOPS_TEXT = [
+  { n: 'Яндекс Маркет', u: q => 'https://market.yandex.ru/search?text=' + enc(q), main: true },
+  { n: 'Ozon', u: q => 'https://www.ozon.ru/search/?text=' + enc(q) },
+  { n: 'Wildberries', u: q => 'https://www.wildberries.ru/catalog/0/search.aspx?search=' + enc(q) },
+  { n: 'Авито', u: q => 'https://www.avito.ru/rossiya/zapchasti_i_aksessuary?q=' + enc(q) },
+  { n: 'ZZap', u: q => 'https://www.zzap.ru/public/search.aspx#rawdata=' + enc(q) },
+];
+const SHOPS_ART = [
+  { n: 'Exist', u: a => 'https://www.exist.ru/Price/?pcode=' + enc(a), main: true },
+  { n: 'Emex', u: a => 'https://emex.ru/products/' + enc(a) },
+  { n: 'Autopiter', u: a => 'https://www.autopiter.ru/goods/' + enc(a) },
+  { n: 'ZZap', u: a => 'https://www.zzap.ru/public/search.aspx#rawdata=' + enc(a) },
+];
+const findArticle = q => 'https://yandex.ru/search/?text=' + enc(q + ' каталожный номер оригинал');
+const MODEL_BODY = new Set(['body', 'doors', 'interior', 'hvac']);
+// Запрос: название без пометок, сторона словами, модель — 2131 для кузова и салона, 21214 для агрегатов (общие с трёхдверкой)
+function shopQuery(p) {
+  let n = /^(Колесо|Колёсные гайки|Расширитель|Брызговик|Подкрылок)/.test(p.name) ? p.name.replace(/ — .*$/, '') : p.name
+    .replace(/ — спереди слева/, ' передний левый').replace(/ — спереди справа/, ' передний правый')
+    .replace(/ — сзади слева/, ' задний левый').replace(/ — сзади справа/, ' задний правый')
+    .replace(/ — слева/, ' левый').replace(/ — справа/, ' правый').replace(/ — (цилиндр|передняя|задняя).*$/, '')
+    .replace(/\([^)]*\)/g, ' ').replace(/[«»]/g, '').replace(/\s+/g, ' ').trim();
+  return n + (MODEL_BODY.has(p.layer) ? ' ВАЗ 2131 Нива' : ' ВАЗ 21214 Нива');
+}
+let ARTS = {}; try { ARTS = JSON.parse(localStorage.getItem('niva2131-arts')) || {}; } catch {}
+const saveArts = () => { try { localStorage.setItem('niva2131-arts', JSON.stringify(ARTS)); } catch {} };
+const linksHtml = (list, v) => list.map(s => `<a href="${s.u(v)}" target="_blank" rel="noopener" class="${s.main ? 'main' : ''}">${s.n}</a>`).join('');
+function shopSection(key, p) {
+  const q = shopQuery(p), art = ARTS[key] || '';
+  return `<section class="shop" data-shop="${esc(key)}"><h3>Найти и купить</h3>
+    <label class="lbl-sm" for="shopQ">Запрос (можно изменить)</label>
+    <input id="shopQ" value="${esc(q)}" autocomplete="off">
+    <div class="shop-links" id="shopText">${linksHtml(SHOPS_TEXT, q)}</div>
+    <label class="lbl-sm" for="shopA">Каталожный номер</label>
+    <input id="shopA" value="${esc(art)}" placeholder="например, 21214-…; сохраняется в этом браузере" autocomplete="off">
+    <div class="shop-links" id="shopArt">${art ? linksHtml(SHOPS_ART, art.replace(/[\s-]/g, '')) : ''}<a href="${findArticle(q)}" target="_blank" rel="noopener" id="shopFind">Найти каталожный номер</a></div>
+    <small>По номеру поиск точнее: так находят и оригинал, и аналоги. Номер смотрите на старой детали, в каталоге LADA или по кнопке выше.</small>
+  </section>`;
+}
+document.addEventListener('input', e => {
+  const sec = e.target.closest('[data-shop]'); if (!sec) return;
+  const q = $('#shopQ').value.trim(), a = $('#shopA').value.trim(), key = sec.dataset.shop;
+  if (e.target.id === 'shopQ') { $('#shopText').innerHTML = linksHtml(SHOPS_TEXT, q); $('#shopFind').href = findArticle(q); }
+  if (e.target.id === 'shopA') { a ? ARTS[key] = a : delete ARTS[key]; saveArts(); $('#shopArt').innerHTML = (a ? linksHtml(SHOPS_ART, a.replace(/[\s-]/g, '')) : '') + `<a href="${findArticle(q)}" target="_blank" rel="noopener" id="shopFind">Найти каталожный номер</a>`; }
+});
 const compAsPart = c => ({ ...c, layer: 'elec', kind: 'comp', loc: '', check: '', tips: '' });
 const allParts = () => [...PARTS, ...COMPONENTS.map(compAsPart)];
 const wireVisible = w => state.visible.has(w.circuit.h) && matches(w);
@@ -535,7 +590,8 @@ function renderPartList() {
       return `<button class="wl-item ${on ? 'sel' : ''}" ${key}="${p.id}"><i class="pdot" style="background:${l.color}"></i><span>${esc(p.name)}</span><span></span></button>`;
     }).join('');
   }).join('');
-  $('#wireList').innerHTML = (otherN ? `<button class="other-hit" data-stab="wires">В проводах найдено: ${otherN} — показать</button>` : '') + (html || '<p style="padding:16px;color:var(--muted)">Ничего не найдено. Измените запрос или включите слои выше.</p>');
+  const shopRow = q ? `<div class="shop" style="padding:4px 8px 8px"><small>Искать «${esc(q)}» в магазинах:</small><div class="shop-links">${linksHtml(SHOPS_TEXT, q + ' Нива 2131')}</div></div>` : '';
+  $('#wireList').innerHTML = shopRow + (otherN ? `<button class="other-hit" data-stab="wires">В проводах найдено: ${otherN} — показать</button>` : '') + (html || '<p style="padding:16px;color:var(--muted)">Ничего не найдено. Измените запрос или включите слои выше.</p>');
 }
 
 // ---------- Карточка ----------
@@ -580,6 +636,7 @@ function renderComp(c) {
     <div><div class="eyebrow">Узел<button class="close" data-close aria-label="Закрыть">×</button></div><h2>${esc(c.name)}</h2></div>
     ${c.desc ? `<p>${esc(c.desc)}</p>` : ''}
     <section><h3>Подключённые провода (${ws.length})</h3><div class="siblings">${ws.map(w => `<button class="wl-item" data-w="${w.id}">${swatch(w.color)}<span>${esc(w.circuit.name)} · ${esc(w.name)}</span><span class="pin">${w.pin ? '#' + w.pin : ''}</span></button>`).join('') || '<span style="color:var(--muted)">Провода к этому узлу проходят транзитом.</span>'}</div></section>
+    ${shopSection('c:' + c.id, { name: c.name, layer: 'elec' })}
     <div class="actions"><button class="btn primary" data-fly>Показать на модели</button></div>
     ${c.ref ? `<section><h3>Источники</h3>${refList(c.ref)}</section>` : ''}
   </div>`;
@@ -599,6 +656,7 @@ function renderPart(p) {
     ${p.tips ? `<section><h3>При замене</h3><p>${esc(p.tips)}</p></section>` : ''}
     ${same.length ? `<section><h3>Такие же детали</h3><div class="siblings">${same.map(x => `<button class="wl-item" data-p="${x.id}"><i class="pdot" style="background:${l.color}"></i><span>${esc(x.name)}</span><span></span></button>`).join('')}</div></section>` : ''}
     ${near.length ? `<section><h3>Электрика рядом</h3><div class="actions">${near.map(({ c }) => `<button class="chip" data-c="${c.id}">${esc(c.name)}</button>`).join('')}</div></section>` : ''}
+    ${shopSection('p:' + p.id, p)}
     <div class="actions"><button class="btn primary" data-fly>Показать на модели</button><button class="btn" data-onlylayer="${l.id}">Только слой «${esc(l.name)}»</button></div>
     <div class="warnbox">Место на модели — по компоновке Нивы 2131; метка показывает зону детали, а не её точную форму.</div>
   </div>`;
