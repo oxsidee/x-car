@@ -31,7 +31,11 @@ header { display: flex; align-items: center; gap: 16px; padding-inline: 16px; bo
 .head-actions { margin-left: auto; display: flex; gap: 8px; }
 .icon-btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
 .icon-btn:hover { border-color: var(--muted); }
-#toggleSide { display: none; }
+#menuBtn { display: none; width: 40px; height: 40px; flex: none; align-items: center; justify-content: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 0; }
+#menuBtn span, #menuBtn span::before, #menuBtn span::after { display: block; width: 18px; height: 2px; border-radius: 1px; background: var(--fg); position: relative; content: ""; }
+#menuBtn span::before { position: absolute; top: -6px; } #menuBtn span::after { position: absolute; top: 6px; }
+#mSlot { display: none; }
+#backdrop { display: none; }
 
 main { position: relative; min-height: 0; display: grid; grid-template-columns: var(--side) 1fr var(--drawer); }
 aside { background: var(--panel); min-height: 0; display: flex; flex-direction: column; }
@@ -139,23 +143,43 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
 
 @media (max-width: 1100px) { main { grid-template-columns: 290px 1fr 340px; } }
 @media (max-width: 820px) {
-  :root { --top: 48px; }
+  :root { --top: 56px; }
+  header { padding-inline: 12px; gap: 12px; }
+  .brand { flex: 1; }
+  .brand h1 { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
   .brand span { display: none; }
-  #toggleSide { display: inline-block; }
+  #menuBtn { display: inline-flex; }
   main { grid-template-columns: 1fr; }
-  #side, #drawer { position: absolute; left: 0; right: 0; bottom: 0; max-height: 62%; z-index: 10; border: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.4); padding-bottom: env(safe-area-inset-bottom, 0px); }
-  #side { display: none; }
-  #side.open { display: flex; }
+
+  /* Левое выезжающее меню: действия, виды, источник, жгуты, список проводов */
+  #side { position: fixed; top: calc(env(safe-area-inset-top, 0px) + var(--top)); left: 0; bottom: 0; width: min(88vw, 360px); z-index: 40;
+    transform: translateX(-102%); transition: transform .24s ease; border-right: 1px solid var(--line); overflow-y: auto; overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: 12px 0 30px rgba(0,0,0,.45); }
+  #side.open { transform: none; }
+  #side .wire-list { overflow: visible; flex: none; }
+  #backdrop { display: block; position: fixed; inset: calc(env(safe-area-inset-top, 0px) + var(--top)) 0 0 0; z-index: 35; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .24s; }
+  body.menu-open #backdrop { opacity: 1; pointer-events: auto; }
+  #mSlot { display: grid; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  #mSlot .head-actions { display: grid; grid-template-columns: 1fr 1fr; margin: 0; gap: 8px; }
+  #mSlot .head-actions .icon-btn { padding: 11px 10px; }
+  #mSlot .toolbar { position: static; display: grid; gap: 10px; max-width: none; }
+  #mSlot .toolbar .grp { display: grid; grid-template-columns: repeat(4, 1fr); border-radius: 8px; backdrop-filter: none; background: var(--panel-2); }
+  #mSlot .toolbar .grp button { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 11px 4px; font-size: 13px; }
+  #mSlot .toolbar label { grid-column: 1 / -1; display: flex; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  #mSlot .toolbar input[type=range] { flex: 1; width: auto; }
+
+  /* Шторка карточки снизу */
+  #drawer { position: absolute; left: 0; right: 0; bottom: 0; height: 55%; z-index: 10; border: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px rgba(0,0,0,.4); padding-bottom: env(safe-area-inset-bottom, 0px); transition: height .22s ease; overscroll-behavior: contain; }
   #drawer.empty { display: none; }
-  #drawer { height: 58%; max-height: none; transition: height .2s ease; }
-  #drawer.collapsed { height: 76px; overflow: hidden; }
-  #side { height: 62%; max-height: none; }
-  .grab { display: block; position: sticky; top: 0; z-index: 2; height: 26px; margin: 0 0 -8px; background: var(--panel); cursor: grab; touch-action: none; }
-  .grab::before { content: ""; position: absolute; left: 50%; top: 9px; width: 44px; height: 5px; margin-left: -22px; border-radius: 3px; background: var(--line); }
-  .toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; right: 12px; }
-  .toolbar .grp { flex-wrap: nowrap; flex: none; }
-  .toolbar label { display: none; }
-  .hint { right: 12px; }
+  #drawer.collapsed { overflow: hidden; }
+  .grab { display: block; position: sticky; top: 0; z-index: 2; height: 28px; margin: 0 0 -10px; background: var(--panel); cursor: grab; }
+  .grab::before { content: ""; position: absolute; left: 50%; top: 10px; width: 44px; height: 5px; margin-left: -22px; border-radius: 3px; background: var(--muted); opacity: .6; }
+  .card { padding: 14px 16px 24px; }
+  .card h2 { font-size: 17px; }
+  .eyebrow { flex-wrap: wrap; row-gap: 6px; }
+  .hint { right: 12px; font-size: 11px; }
+  body.sheet-open .hint { display: none; }
 }
 @media (pointer: coarse) {
   .toolbar button { padding: 10px 12px; font-size: 13.5px; }
@@ -171,16 +195,16 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
 
 <div id="app">
   <header>
+    <button id="menuBtn" aria-label="Меню" aria-expanded="false"><span></span></button>
     <div class="brand"><h1>НИВА 2131 · ПРОВОДКА</h1><span>ВАЗ-21310 · 2004 · инжектор · Bosch MP7.0</span></div>
     <div class="head-actions">
       <button class="icon-btn" id="openPins">Разъёмы</button>
       <button class="icon-btn" id="hideUI" title="Скрыть все меню (клавиша H)">Скрыть меню</button>
-      <button class="icon-btn" id="toggleSide">Жгуты</button>
     </div>
   </header>
   <main>
     <aside id="side">
-      <div class="grab" data-grab="side"></div>
+      <div id="mSlot"></div>
       <div class="side-head">
         <div class="src-box">
           <label class="lbl-sm" for="source">Источник данных</label>
@@ -213,6 +237,7 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
   </main>
 </div>
 
+<div id="backdrop"></div>
 <button id="showUI" title="Показать меню (клавиша H)">Показать меню</button>
 
 <dialog id="pinDlg">
@@ -423,6 +448,7 @@ const refList = keys => `<ol class="refs">${[...new Set(keys)].map(k => `<li><a 
 function renderDrawer() {
   const sel = state.sel;
   drawer.classList.toggle('empty', !sel);
+  if (!sel) { document.body.classList.remove('sheet-open'); drawer.style.height = ''; drawer.classList.remove('collapsed'); }
   if (!sel) return renderIntro();
   if (sel.type === 'comp') return renderComp(COMP[sel.id]);
   const w = WMAP[sel.id], c = w.circuit, h = HMAP[c.h], src = SOURCES.find(s => s.id === state.src);
@@ -514,7 +540,7 @@ function select(sel, { fly = false } = {}) {
   applyStyles(); renderDrawer(); renderList(); updateViewOffset();
   if (sel) document.querySelector('#wireList .wl-item.sel')?.scrollIntoView({ block: 'nearest' });
   if (sel && fly) flyTo(sel);
-  if (sel && matchMedia('(max-width: 820px)').matches) $('#side').classList.remove('open');
+  if (sel && isMobile()) { setMenu(false); openSheet(); }
 }
 function boundsOf(sel) {
   const b = new THREE.Box3();
@@ -534,7 +560,7 @@ const VIEWS = {
   top: [[0, 0.6, 0], [0.01, 7.6, 0]], rear: [[0, 0.8, 0], [-6.6, 1.5, 0]],
   engine: [[1.5, 0.9, 0], [2.9, 2.1, 1.5]], cabin: [[0.6, 0.8, -0.3], [-0.6, 1.5, 0.9]],
 };
-document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { const [t, p] = VIEWS[b.dataset.view]; animateCam(new THREE.Vector3(...t), new THREE.Vector3(...p)); });
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { const [t, p] = VIEWS[b.dataset.view]; animateCam(new THREE.Vector3(...t), new THREE.Vector3(...p)); if (isMobile()) setMenu(false); });
 
 // ---------- События ----------
 document.addEventListener('click', e => {
@@ -570,8 +596,24 @@ toggle('#tMech', on => car.groups.mech.visible = on);
 toggle('#tInt', on => car.groups.interior.visible = on);
 toggle('#tComp', on => compGroup.visible = on);
 toggle('#tLabels', on => stage.classList.toggle('no-labels', !on));
-$('#toggleSide').onclick = () => { $('#side').classList.toggle('open'); updateViewOffset(); };
-$('#openPins').onclick = () => openConn(connTab);
+// ---------- Телефонная раскладка: левое меню ----------
+const mq = matchMedia('(max-width: 820px)');
+const isMobile = () => mq.matches;
+const toolbarEl = $('.toolbar'), actionsEl = $('.head-actions'), headerEl = $('header');
+function layoutMobile() {
+  if (isMobile()) { $('#mSlot').append(actionsEl, toolbarEl); }
+  else { headerEl.append(actionsEl); stage.insertBefore(toolbarEl, $('#hint')); setMenu(false); const d = $('#drawer'); d.style.height = ''; d.style.transition = ''; d.classList.remove('collapsed'); }
+}
+function setMenu(open) {
+  $('#side').classList.toggle('open', open);
+  document.body.classList.toggle('menu-open', open);
+  $('#menuBtn').setAttribute('aria-expanded', open);
+}
+$('#menuBtn').onclick = () => setMenu(!$('#side').classList.contains('open'));
+$('#backdrop').onclick = () => setMenu(false);
+mq.addEventListener('change', () => { layoutMobile(); resize(); });
+layoutMobile();
+$('#openPins').onclick = () => { setMenu(false); openConn(connTab); };
 $('#pinClose').onclick = () => $('#pinDlg').close();
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#pinDlg').open) select(null);
@@ -583,7 +625,7 @@ function setUIHidden(on) {
   try { localStorage.setItem('niva2131-ui-hidden', on ? '1' : ''); } catch {}
   requestAnimationFrame(() => { resize(); updateViewOffset(); });
 }
-$('#hideUI').onclick = () => setUIHidden(true);
+$('#hideUI').onclick = () => { setMenu(false); setUIHidden(true); };
 $('#showUI').onclick = () => setUIHidden(false);
 
 // Наведение и клики по сцене
@@ -642,30 +684,97 @@ const endPointer = e => {
   lastTap = dbl ? { t: 0, x: 0, y: 0 } : { t: now, x: e.clientX, y: e.clientY };
   if (dbl) { if (h) select({ type: h.type, id: h.id }, { fly: true }); else { const [t, p] = VIEWS.iso; animateCam(new THREE.Vector3(...t), new THREE.Vector3(...p)); } return; }
   select(h ? { type: h.type, id: h.id } : null);
-  if (touch && h) $('#drawer').classList.remove('collapsed');
   if (document.body.classList.contains('ui-hidden')) { showTip(h, e.clientX, e.clientY); clearTimeout(endPointer.t); endPointer.t = setTimeout(() => { tip.hidden = true; }, 2500); }
 };
 renderer.domElement.addEventListener('pointerup', endPointer);
 renderer.domElement.addEventListener('pointercancel', endPointer);
 renderer.domElement.addEventListener('contextmenu', e => { if (IS_TOUCH) e.preventDefault(); });
 
-// Шторки на телефоне: тап по ручке сворачивает/разворачивает, перетаскивание меняет высоту
-document.addEventListener('pointerdown', e => {
-  const g = e.target.closest('[data-grab]'); if (!g) return;
-  const sheet = g.dataset.grab === 'side' ? $('#side') : $('#drawer');
-  const startY = e.clientY, startH = sheet.getBoundingClientRect().height, maxH = $('main').getBoundingClientRect().height;
-  let moved = false;
-  g.setPointerCapture(e.pointerId);
-  sheet.style.transition = 'none';
-  const move = ev => { const dy = startY - ev.clientY; if (Math.abs(dy) > 6) moved = true; if (moved) { sheet.classList.remove('collapsed'); sheet.style.height = Math.max(76, Math.min(maxH - 8, startH + dy)) + 'px'; } };
-  const up = () => {
-    g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up);
-    sheet.style.transition = '';
-    if (!moved) { if (sheet.id === 'side') { sheet.classList.remove('open'); sheet.style.height = ''; } else sheet.classList.toggle('collapsed'); return; }
-    const h = sheet.getBoundingClientRect().height;
-    if (h < 120) { sheet.style.height = ''; if (sheet.id === 'side') sheet.classList.remove('open'); else sheet.classList.add('collapsed'); }
-  };
-  g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+// ---------- Шторка карточки: подъём и прокрутка работают как одно движение ----------
+// Свайп вверх: сначала шторка поднимается до верха, остаток жеста прокручивает карточку.
+// Свайп вниз: сначала карточка прокручивается к началу, остаток жеста опускает шторку.
+const sheet = $('#drawer');
+const SHEET_MIN = 84;
+const sheetSnaps = () => { const max = $('main').getBoundingClientRect().height - 6; return [SHEET_MIN, Math.round(max * 0.55), max]; };
+const sheetH = () => sheet.getBoundingClientRect().height;
+function setSheetH(h, animate) {
+  sheet.style.transition = animate ? '' : 'none';
+  sheet.style.height = h + 'px';
+  sheet.classList.toggle('collapsed', h <= SHEET_MIN + 2);
+  if (sheet.classList.contains('collapsed')) sheet.scrollTop = 0;
+}
+function openSheet() {
+  document.body.classList.add('sheet-open');
+  const [, mid] = sheetSnaps();
+  if (!sheet.style.height || sheetH() <= SHEET_MIN + 2) setSheetH(mid, true);
+}
+function sheetDelta(d) {                           // d > 0 — палец идёт вверх
+  const [min, , max] = sheetSnaps(); let h = sheetH();
+  if (d > 0) {
+    const grow = Math.min(d, max - h);
+    if (grow > 0) { h += grow; d -= grow; setSheetH(h); }
+    if (d > 0) sheet.scrollTop += d;
+  } else {
+    const back = Math.min(-d, sheet.scrollTop);
+    if (back > 0) { sheet.scrollTop -= back; d += back; }
+    if (d < 0) setSheetH(Math.max(min, h + d));
+  }
+}
+let sg = null, inertia = 0;
+sheet.addEventListener('touchstart', e => {
+  if (!isMobile() || e.touches.length > 1) return;
+  cancelAnimationFrame(inertia);
+  const y = e.touches[0].clientY;
+  sg = { y0: y, y, t: performance.now(), v: 0, moved: false, grab: !!e.target.closest('.grab') };
+}, { passive: true });
+sheet.addEventListener('touchmove', e => {
+  if (!sg) return;
+  const y = e.touches[0].clientY, now = performance.now();
+  if (!sg.moved && Math.abs(y - sg.y0) < 6) return;
+  sg.moved = true;
+  e.preventDefault();
+  const d = sg.y - y, dt = Math.max(1, now - sg.t);
+  sg.v = 0.8 * (d / dt) + 0.2 * sg.v;              // сглаженная скорость, px/мс
+  sg.y = y; sg.t = now;
+  sheetDelta(d);
+}, { passive: false });
+function endSheetGesture() {
+  if (!sg) return;
+  const g = sg; sg = null;
+  const [min, mid, max] = sheetSnaps(), h = sheetH();
+  if (!g.moved) { if (g.grab) setSheetH(h <= min + 2 ? mid : min, true); return; }
+  if (performance.now() - g.t > 120) g.v = 0;        // палец остановился перед отпусканием
+  if (h >= max - 1 && sheet.scrollTop > 0 || (h >= max - 1 && g.v > 0)) {
+    // Шторка поднята: докручиваем карточку по инерции
+    let v = g.v * 16, last = performance.now();
+    const step = now => {
+      const dt = Math.min(32, now - last) / 16; last = now;
+      v *= Math.pow(0.95, dt);
+      if (Math.abs(v) < 0.3) return;
+      const before = sheet.scrollTop; sheet.scrollTop += v * dt;
+      if (sheet.scrollTop === before) return;
+      inertia = requestAnimationFrame(step);
+    };
+    inertia = requestAnimationFrame(step);
+    return;
+  }
+  // Шторка между положениями: прилипаем к ближайшему с учётом скорости
+  const snaps = [min, mid, max];
+  let target = snaps.reduce((a, b) => Math.abs(b - h) < Math.abs(a - h) ? b : a);
+  if (g.v > 0.5) target = snaps.find(s => s > h + 4) ?? max;
+  if (g.v < -0.5) target = [...snaps].reverse().find(s => s < h - 4) ?? min;
+  setSheetH(target, true);
+}
+sheet.addEventListener('touchend', endSheetGesture);
+sheet.addEventListener('touchcancel', endSheetGesture);
+// Мышью шторку тоже можно тянуть за ручку (узкое окно на компьютере)
+sheet.addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'mouse' || !e.target.closest('.grab')) return;
+  let last = e.clientY, moved = false;
+  const g = e.target.closest('.grab'); g.setPointerCapture(e.pointerId);
+  const move = ev => { const d = last - ev.clientY; if (Math.abs(ev.clientY - e.clientY) > 4) moved = true; last = ev.clientY; if (moved) sheetDelta(d); };
+  const up = () => { g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); const [min, mid] = sheetSnaps(); if (!moved) setSheetH(sheetH() <= min + 2 ? mid : min, true); };
+  g.addEventListener('pointermove', move); g.addEventListener('pointerup', up);
 });
 if (IS_TOUCH) $('#hint').textContent = '1 палец — вращать · 2 пальца — зум и сдвиг · тап — описание · двойной тап — крупно';
 
@@ -695,19 +804,14 @@ function resize() {
 }
 // На телефоне открытая шторка закрывает низ экрана: сдвигаем картинку вверх, в видимую часть
 function updateViewOffset() {
-  const r = stage.getBoundingClientRect(), d = $('#drawer'), sd = $('#side');
-  const mobile = matchMedia('(max-width: 820px)').matches;
+  const r = stage.getBoundingClientRect(), d = $('#drawer');
   let cover = 0;
-  if (mobile) {
-    if (!d.classList.contains('empty') && getComputedStyle(d).display !== 'none') cover = d.getBoundingClientRect().height;
-    if (sd.classList.contains('open')) cover = Math.max(cover, sd.getBoundingClientRect().height);
-  }
+  if (isMobile() && !d.classList.contains('empty') && getComputedStyle(d).display !== 'none') cover = d.getBoundingClientRect().height;
   if (cover > 80) camera.setViewOffset(r.width, r.height, 0, Math.min(cover, r.height * 0.7) / 2, r.width, r.height);
   else camera.clearViewOffset();
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(() => updateViewOffset()).observe($('#drawer'));
-new ResizeObserver(() => updateViewOffset()).observe($('#side'));
 new ResizeObserver(resize).observe(stage);
 const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 renderer.setAnimationLoop(now => {
