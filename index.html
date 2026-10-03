@@ -186,10 +186,10 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
 
   /* Шторка карточки снизу */
   #drawer { position: absolute; left: 0; right: 0; bottom: 0; height: 55%; z-index: 10; border: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0;
-    box-shadow: 0 -10px 30px rgba(0,0,0,.4); padding-bottom: env(safe-area-inset-bottom, 0px); transition: height .22s ease; overscroll-behavior: contain; }
+    box-shadow: 0 -10px 30px rgba(0,0,0,.4); padding-bottom: env(safe-area-inset-bottom, 0px); transition: height .22s ease; overscroll-behavior: contain; touch-action: none; }
   #drawer.empty { display: none; }
   #drawer.collapsed { overflow: hidden; }
-  .grab { display: block; position: sticky; top: 0; z-index: 2; height: 28px; margin: 0 0 -10px; background: var(--panel); cursor: grab; }
+  .grab { display: block; position: sticky; top: 0; z-index: 2; height: 28px; background: var(--panel); cursor: grab; }
   .grab::before { content: ""; position: absolute; left: 50%; top: 10px; width: 44px; height: 5px; margin-left: -22px; border-radius: 3px; background: var(--muted); opacity: .6; }
   .card { padding: 14px 16px 24px; }
   .card h2 { font-size: 17px; }
@@ -1389,6 +1389,8 @@ sheet.addEventListener('touchstart', e => {
 sheet.addEventListener('touchmove', e => {
   if (!sg) return;
   const y = e.touches[0].clientY, now = performance.now();
+  // Прокрутку карточки ведём сами: браузер не должен начинать свою (иначе при свайпе вниз он тянет контент, а не шторку)
+  if (e.cancelable) e.preventDefault();
   if (!sg.moved && Math.abs(y - sg.y0) < 6) return;
   sg.moved = true;
   e.preventDefault();
