@@ -1,0 +1,727 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Проводка Нивы 2131</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;700&display=swap">
+<style>
+/* Layout: полноэкранная 3D-сцена, слева источник и жгуты, справа карточка провода; на телефоне — нижние шторки.
+   Одна тёмная тема по выбору: графит гаража, янтарный акцент как подсветка щитка Нивы. */
+:root {
+  --bg: #0c1013; --panel: #12181c; --panel-2: #182025; --line: #253038; --fg: #dde5ea; --muted: #8796a1;
+  --accent: #f2a531; --accent-ink: #1a1206; --warn: #e5a03a;
+  --f-display: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --f-body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --side: 330px; --drawer: 410px; --top: 52px;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--f-body); overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#app { position: fixed; inset: 0; padding-top: env(safe-area-inset-top, 0px); display: grid; grid-template-rows: var(--top) 1fr; }
+header { display: flex; align-items: center; gap: 16px; padding-inline: 16px; border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { font: 700 15px/1 var(--f-display); letter-spacing: .02em; margin: 0; white-space: nowrap; }
+.brand span { color: var(--muted); font: 12px var(--f-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.head-actions { margin-left: auto; display: flex; gap: 8px; }
+.icon-btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+.icon-btn:hover { border-color: var(--muted); }
+#toggleSide { display: none; }
+
+main { position: relative; min-height: 0; display: grid; grid-template-columns: var(--side) 1fr var(--drawer); }
+aside { background: var(--panel); min-height: 0; display: flex; flex-direction: column; }
+#side { border-right: 1px solid var(--line); }
+#drawer { border-left: 1px solid var(--line); overflow-y: auto; }
+#stage { position: relative; min-width: 0; min-height: 0; }
+#stage canvas { display: block; }
+
+.side-head { padding: 14px 16px 10px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.lbl-sm { font: 600 10.5px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.src-box { display: grid; gap: 6px; }
+#source { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.src-sub { font-size: 12px; color: var(--muted); line-height: 1.4; }
+#search { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+#search::placeholder { color: var(--muted); }
+.harness-list { display: grid; gap: 2px; }
+.h-row { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; user-select: none; }
+.h-row:hover { background: var(--panel-2); }
+.h-row input { margin: 0; accent-color: var(--accent); }
+.h-row b { font-weight: 600; display: block; font-size: 13px; }
+.h-row small { color: var(--muted); font-size: 11.5px; display: block; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.cnt { font: 11px var(--f-mono); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.wire-list { overflow-y: auto; flex: 1; padding: 8px 8px 16px; }
+.wl-group { font: 600 10.5px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 12px 8px 4px; }
+.wl-item { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 5px 8px; }
+.wl-item:hover { background: var(--panel-2); }
+.wl-item.sel { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.wl-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.wl-item .pin { font: 11px var(--f-mono); color: var(--muted); }
+.swatch { width: 28px; height: 10px; border-radius: 5px; border: 1px solid rgba(255,255,255,.15); box-sizing: border-box; display: inline-block; }
+.swatch.unk { background-image: repeating-linear-gradient(45deg, #c7ccd1 0 3px, #6b737a 3px 6px) !important; }
+
+.toolbar { position: absolute; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 24px); z-index: 3; }
+.toolbar .grp { display: flex; flex-wrap: wrap; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; backdrop-filter: blur(6px); }
+.toolbar button { background: none; border: 0; padding: 7px 10px; font-size: 12.5px; color: var(--fg); border-right: 1px solid var(--line); }
+.toolbar .grp button:last-child { border-right: 0; }
+.toolbar button:hover { background: var(--panel-2); }
+.toolbar button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.toolbar label { display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; color: var(--muted); }
+.toolbar input[type=range] { width: 90px; accent-color: var(--accent); }
+.hint { position: absolute; left: 12px; bottom: 12px; font: 11.5px var(--f-mono); color: var(--muted); pointer-events: none; padding-bottom: env(safe-area-inset-bottom, 0px); }
+#tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 6px 9px; border-radius: 6px; font-size: 12.5px; white-space: nowrap; transform: translate(12px, 12px); z-index: 5; }
+#tip small { color: var(--muted); display: block; font: 11px var(--f-mono); }
+.lbl { font: 600 10.5px var(--f-body); color: var(--fg); background: color-mix(in srgb, var(--bg) 75%, transparent); padding: 2px 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; border: 1px solid var(--line); }
+.no-labels .lbl { display: none; }
+
+.card { padding: 18px 20px 28px; display: grid; gap: 18px; }
+.eyebrow { font: 600 10.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.card h2 { font: 700 18px/1.25 var(--f-display); margin: 4px 0 0; text-wrap: balance; }
+.card h3 { font: 600 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.card p { margin: 0; max-width: 65ch; }
+.mono { font-family: var(--f-mono); font-size: 12.5px; }
+.bigswatch { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--panel-2); border-radius: 8px; border: 1px solid var(--line); }
+.bigswatch .swatch { width: 56px; height: 16px; border-radius: 8px; flex: none; }
+.bigswatch b { font-size: 14px; }
+.bigswatch small { color: var(--muted); display: block; }
+.pinbox { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.pinbox .num { font: 700 22px/1 var(--f-display); color: var(--accent); min-width: 36px; text-align: center; }
+.pinbox small { display: block; color: var(--muted); font-size: 11.5px; }
+.ends { display: grid; gap: 4px; }
+.end { display: grid; grid-template-columns: 54px 1fr; gap: 8px; font-size: 13px; }
+.end span:first-child { font: 11px var(--f-mono); color: var(--muted); padding-top: 2px; text-transform: uppercase; }
+.siblings { display: grid; gap: 2px; }
+.siblings .wl-item { padding: 5px 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; font-size: 13px; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.warnbox { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--accent); padding: 4px 0 4px 12px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 11px var(--f-mono); padding: 3px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--fg); background: none; }
+.refs { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 12.5px; }
+.intro ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 12.5px; }
+.legend div { display: flex; align-items: center; gap: 8px; }
+.legend .swatch { width: 22px; }
+.close { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px; }
+
+dialog { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; overflow: hidden; }
+dialog[open] { display: flex; flex-direction: column; }
+.dlg-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+.dlg-head { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+.dlg-head h2 { font: 700 16px var(--f-display); margin: 0; }
+.dlg-body { padding: 12px 18px 18px; overflow-x: auto; min-height: 0; }
+.pintable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pintable td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.pintable td:first-child { font: 600 13px var(--f-mono); color: var(--accent); width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.pintable tr.free td { color: var(--muted); }
+.pintable button { background: none; border: 0; padding: 0; color: var(--fg); text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.tab { background: var(--panel-2); border: 1px solid var(--line); border-radius: 99px; padding: 6px 12px; font-size: 12.5px; }
+.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.pintable .sw { width: 34px; }
+.conns { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.conns button { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline dotted; text-underline-offset: 3px; font-weight: 600; }
+.grab { display: none; }
+#stage canvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#showUI { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 12px; z-index: 30; display: none; background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: 99px; padding: 8px 14px; font-size: 13px; backdrop-filter: blur(6px); }
+body.ui-hidden #showUI { display: block; }
+body.ui-hidden header, body.ui-hidden #side, body.ui-hidden #drawer, body.ui-hidden .toolbar, body.ui-hidden .hint { display: none !important; }
+body.ui-hidden #app { grid-template-rows: 1fr; }
+body.ui-hidden main { grid-template-columns: 1fr !important; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font: 12px var(--f-mono); }
+
+@media (max-width: 1100px) { main { grid-template-columns: 290px 1fr 340px; } }
+@media (max-width: 820px) {
+  :root { --top: 48px; }
+  .brand span { display: none; }
+  #toggleSide { display: inline-block; }
+  main { grid-template-columns: 1fr; }
+  #side, #drawer { position: absolute; left: 0; right: 0; bottom: 0; max-height: 62%; z-index: 10; border: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.4); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  #side { display: none; }
+  #side.open { display: flex; }
+  #drawer.empty { display: none; }
+  #drawer { height: 58%; max-height: none; transition: height .2s ease; }
+  #drawer.collapsed { height: 76px; overflow: hidden; }
+  #side { height: 62%; max-height: none; }
+  .grab { display: block; position: sticky; top: 0; z-index: 2; height: 26px; margin: 0 0 -8px; background: var(--panel); cursor: grab; touch-action: none; }
+  .grab::before { content: ""; position: absolute; left: 50%; top: 9px; width: 44px; height: 5px; margin-left: -22px; border-radius: 3px; background: var(--line); }
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; right: 12px; }
+  .toolbar .grp { flex-wrap: nowrap; flex: none; }
+  .toolbar label { display: none; }
+  .hint { right: 12px; }
+}
+@media (pointer: coarse) {
+  .toolbar button { padding: 10px 12px; font-size: 13.5px; }
+  .icon-btn { padding: 9px 12px; }
+  .wl-item { padding: 9px 8px; }
+  .h-row { padding: 8px; }
+  .h-row input { width: 20px; height: 20px; }
+  .close { font-size: 24px; padding: 6px 10px; }
+  #tip { transform: translate(-50%, calc(-100% - 28px)); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app">
+  <header>
+    <div class="brand"><h1>НИВА 2131 · ПРОВОДКА</h1><span>ВАЗ-21310 · 2004 · инжектор · Bosch MP7.0</span></div>
+    <div class="head-actions">
+      <button class="icon-btn" id="openPins">Разъёмы</button>
+      <button class="icon-btn" id="hideUI" title="Скрыть все меню (клавиша H)">Скрыть меню</button>
+      <button class="icon-btn" id="toggleSide">Жгуты</button>
+    </div>
+  </header>
+  <main>
+    <aside id="side">
+      <div class="grab" data-grab="side"></div>
+      <div class="side-head">
+        <div class="src-box">
+          <label class="lbl-sm" for="source">Источник данных</label>
+          <select id="source"></select>
+          <div class="src-sub" id="srcSub"></div>
+        </div>
+        <input id="search" type="search" placeholder="Поиск: ДПКВ, стоп, ГЧ, 48…" autocomplete="off">
+        <div class="harness-list" id="harnessList"></div>
+      </div>
+      <div class="wire-list" id="wireList"></div>
+    </aside>
+    <div id="stage">
+      <div id="loading">Загрузка 3D…</div>
+      <div class="toolbar">
+        <div class="grp" role="group" aria-label="Вид">
+          <button data-view="iso">3D</button><button data-view="front">Спереди</button><button data-view="side">Слева</button><button data-view="top">Сверху</button><button data-view="rear">Сзади</button><button data-view="engine">Мотор</button><button data-view="cabin">Салон</button>
+        </div>
+        <div class="grp">
+          <label for="opacity">Кузов <input id="opacity" type="range" min="0" max="1" step="0.01" value="0.3"></label>
+          <button id="tMech" aria-pressed="true" title="Двигатель, КПП, мосты, выпуск">Агрегаты</button>
+          <button id="tInt" aria-pressed="true" title="Панель, сиденья, пол">Салон</button>
+          <button id="tComp" aria-pressed="true" title="Датчики, фары, блоки">Узлы</button>
+          <button id="tLabels" aria-pressed="false">Подписи</button>
+        </div>
+      </div>
+      <div class="hint" id="hint">ЛКМ — вращать · ПКМ — сдвигать · колесо — зум · клик по проводу — описание</div>
+      <div id="tip" hidden></div>
+    </div>
+    <aside id="drawer"></aside>
+  </main>
+</div>
+
+<button id="showUI" title="Показать меню (клавиша H)">Показать меню</button>
+
+<dialog id="pinDlg">
+  <div class="dlg-head"><h2 id="connTitle">Разъёмы</h2><button class="close" id="pinClose" aria-label="Закрыть">×</button></div>
+  <div class="dlg-body">
+    <div class="tabs" id="connTabs" role="tablist"></div>
+    <p class="src-sub" id="connSub" style="margin:0 0 10px"></p>
+    <table class="pintable" id="pinTable"></table>
+  </div>
+</dialog>
+
+<script src="data.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { buildNiva } from './model.js';
+
+const D = window.NIVA;
+const { HARNESSES, COMPONENTS, CIRCUITS, PINOUT, CONNECTORS, CONN_NOTES, COLOR_NAMES, COLOR_HEX, SOURCES, REFS } = D;
+const CONN_IDX = {};
+CONNECTORS.forEach(k => Object.entries(k.pins).forEach(([p, v]) => { if (typeof v === 'string') (CONN_IDX[v] ||= []).push({ k, p }); }));
+const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
+const HMAP = Object.fromEntries(HARNESSES.map(h => [h.id, h]));
+const COMP = Object.fromEntries(COMPONENTS.map(c => [c.id, c]));
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+
+const state = { src: 'f', visible: new Set(HARNESSES.map(h => h.id)), query: '', sel: null, hover: null };
+try { const s = localStorage.getItem('niva2131-src'); if (SOURCES.some(x => x.id === s)) state.src = s; } catch {}
+
+// ---------- Цвета ----------
+const parseColor = code => code === '?' ? ['?'] : (code.match(/Кч|[БЧКЗГСЖОРФ]/g) || ['?']);
+const GEN = { 'белый': 'белой', 'чёрный': 'чёрной', 'красный': 'красной', 'зелёный': 'зелёной', 'голубой': 'голубой', 'серый': 'серой', 'жёлтый': 'жёлтой', 'оранжевый': 'оранжевой', 'розовый': 'розовой', 'фиолетовый': 'фиолетовой', 'коричневый': 'коричневой' };
+const colorName = code => { if (code === '?') return 'цвет не подтверждён'; const [b, s] = parseColor(code); return COLOR_NAMES[b] + (s ? ' с ' + GEN[COLOR_NAMES[s]] + ' полосой' : ''); };
+const swatch = code => { if (code === '?') return '<i class="swatch unk"></i>'; const [b, s] = parseColor(code), bc = COLOR_HEX[b]; return `<i class="swatch" style="background:${s ? `linear-gradient(${bc} 0 35%, ${COLOR_HEX[s]} 35% 65%, ${bc} 65%)` : bc}"></i>`; };
+const cap = s => s[0].toUpperCase() + s.slice(1);
+
+// ---------- Данные под выбранный источник ----------
+let WIRES = [], WMAP = {}, CIRC = [];
+const nodePos = name => (D.NODE_ALT[state.src]?.[name]) || D.N[name];
+function expand(path) {
+  return path.flatMap(p => typeof p === 'string' && p.startsWith('@') ? expand(D.MACROS[p][state.src] || D.MACROS[p]._) : [p]);
+}
+function prepareData() {
+  CIRC = CIRCUITS.filter(c => !c.src || c.src.includes(state.src)).map(c => ({ ...c, ...(c.alt?.[state.src] || {}) }));
+  WIRES = []; CIRC.forEach(c => { c.pts = expand(c.path); c.wires.forEach((w, i) => WIRES.push({ ...w, id: c.id + '/' + i, idx: i, circuit: c })); });
+  WMAP = Object.fromEntries(WIRES.map(w => [w.id, w]));
+}
+const endsOf = c => [c.pts[0], c.pts.at(-1)].filter(p => typeof p === 'string');
+const connectedWires = id => WIRES.filter(w => endsOf(w.circuit).includes(id));
+
+// ---------- Сцена ----------
+const stage = $('#stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0c1013);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+stage.prepend(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+Object.assign(labelRenderer.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
+stage.appendChild(labelRenderer.domElement);
+stage.classList.add('no-labels');
+
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.fog = new THREE.Fog(0x0c1013, 11, 22);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.02, 80);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 0.4; controls.maxDistance = 14;
+controls.target.set(0, 0.8, 0);
+camera.position.set(4.9, 2.7, 4.4);
+
+scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x1a1410, 0.7));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(4, 6, 3); scene.add(key);
+const fill = new THREE.DirectionalLight(0x9fb8ff, 0.45); fill.position.set(-4, 3, -4); scene.add(fill);
+scene.add(new THREE.GridHelper(12, 48, 0x2a353d, 0x1a2228));
+{ const sh = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })); sh.scale.set(2.5, 1.05, 1); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.002; scene.add(sh); }
+
+const car = buildNiva();
+scene.add(car.root);
+const MAT = car.materials;
+function setBodyOpacity(v) {
+  MAT.paint.opacity = v * 0.9; MAT.paint.depthWrite = v > 0.85;
+  MAT.edge.opacity = 0.2 + v * 0.5; MAT.seam.opacity = 0.2 + v * 0.5;
+  MAT.glass.opacity = 0.05 + v * 0.2;
+  MAT.plastic.opacity = 0.3 + v * 0.7; MAT.plastic.depthWrite = v > 0.85;
+  MAT.chrome.opacity = 0.45 + v * 0.55;
+}
+setBodyOpacity(0.3);
+
+// ---------- Узлы ----------
+const compGroup = new THREE.Group(); scene.add(compGroup);
+const KIND_COLOR = { power: 0xd8645f, cabin: 0xb39cf2, light: 0xe9d9a6, engine: 0x9fb0bd, rear: 0x86b3e8, body: 0xc3d36a };
+const compMeshes = [];
+COMPONENTS.forEach(c => {
+  const mat = new THREE.MeshStandardMaterial({ color: KIND_COLOR[c.kind] || 0x9fb0bd, roughness: 0.55, metalness: 0.1, transparent: true, opacity: 0.9 });
+  const m = new THREE.Mesh(new THREE.BoxGeometry(...c.size.map(v => Math.max(v, 0.03))), mat);
+  m.userData = { type: 'comp', id: c.id };
+  compGroup.add(m); compMeshes.push(m);
+  const el = document.createElement('div'); el.className = 'lbl'; el.textContent = c.name.replace(/ \(.+\)/, '');
+  const lab = new CSS2DObject(el); lab.position.set(0, Math.max(c.size[1], 0.03) / 2 + 0.03, 0); m.add(lab);
+});
+const placeComponents = () => compMeshes.forEach(m => m.position.set(...nodePos(m.userData.id)));
+
+// ---------- Провода ----------
+const V3 = p => new THREE.Vector3(...(typeof p === 'string' ? nodePos(p) : p));
+const texCache = {};
+function wireTexture(code) {
+  if (texCache[code]) return texCache[code];
+  const cv = document.createElement('canvas'); cv.width = 8; cv.height = 64;
+  const g = cv.getContext('2d');
+  if (code === '?') { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#6b737a' : '#c7ccd1'; g.fillRect(i, 0, 1, 64); } }
+  else { const [b, s] = parseColor(code); g.fillStyle = COLOR_HEX[b]; g.fillRect(0, 0, 8, 64); if (s) { g.fillStyle = COLOR_HEX[s]; g.fillRect(0, 22, 8, 20); } }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return (texCache[code] = t);
+}
+const wireGroup = new THREE.Group(); scene.add(wireGroup);
+let pickMeshes = [];
+const pickMat = new THREE.MeshBasicMaterial({ visible: false });
+const radiusFor = w => w.circuit.h === 'hv' ? 0.0055 : Math.min(0.012, 0.0028 + Math.sqrt(w.section) * 0.0018);
+function buildWires() {
+  wireGroup.children.slice().forEach(m => { m.geometry.dispose(); if (m.material !== pickMat) { m.material.map?.dispose(); m.material.dispose(); } wireGroup.remove(m); });
+  pickMeshes = [];
+  CIRC.forEach((c, ci) => {
+    const a = ci * 2.399, jit = new THREE.Vector3(Math.cos(a) * 0.004, Math.sin(a * 1.7) * 0.012, Math.sin(a) * 0.012);
+    c.wires.forEach((_, i) => {
+      const w = WMAP[c.id + '/' + i], n = c.wires.length;
+      const ang = (i / n) * Math.PI * 2, r = n > 1 ? 0.006 + 0.0025 * n : 0;
+      const off = new THREE.Vector3(0, Math.sin(ang) * r, Math.cos(ang) * r).add(jit);
+      const pts = c.pts.map((p, k) => V3(p).add(k > 0 && k < c.pts.length - 1 ? off : off.clone().multiplyScalar(0.35)));
+      const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.5);
+      const len = curve.getLength(), segs = Math.max(24, Math.round(len * 70)), rad = radiusFor(w) * (c.thick ? Math.min(1.6, c.thick) : 1);
+      const tex = wireTexture(w.color).clone(); tex.needsUpdate = true; tex.repeat.set(Math.max(1, len * 8), 1);
+      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.45, metalness: 0.05, emissive: new THREE.Color(0), transparent: true });
+      const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, rad, 8, false), mat);
+      mesh.userData = { type: 'wire', id: w.id };
+      const pick = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, segs >> 1), Math.max(rad * 2.2, 0.014), 6, false), pickMat);
+      pick.userData = { type: 'wire', id: w.id };
+      wireGroup.add(mesh, pick); pickMeshes.push(pick);
+      Object.assign(w, { mesh, pick, curve, len });
+    });
+  });
+}
+
+// ---------- Выделение ----------
+function matches(w) {
+  const q = state.query.trim().toLowerCase();
+  if (!q) return true;
+  if (/^\d+$/.test(q)) return String(w.pin) === q;
+  return [w.name, w.circuit.name, w.color, colorName(w.color), w.from, w.to, HMAP[w.circuit.h].name, w.pin ? 'конт ' + w.pin : ''].join(' ').toLowerCase().includes(q);
+}
+const wireVisible = w => state.visible.has(w.circuit.h) && matches(w);
+function applyStyles() {
+  const sel = state.sel;
+  const selC = sel?.type === 'wire' ? WMAP[sel.id]?.circuit.id : null;
+  const compW = sel?.type === 'comp' ? new Set(connectedWires(sel.id).map(w => w.id)) : null;
+  WIRES.forEach(w => {
+    const vis = wireVisible(w); w.mesh.visible = vis; w.pick.visible = vis;
+    let op = 1, em = 0x000000, ei = 1;
+    if (sel) {
+      if (sel.type === 'wire' && w.id === sel.id) { em = 0xf2a531; ei = 0.9; }
+      else if ((selC && w.circuit.id === selC) || compW?.has(w.id)) em = 0x3a2a0a;
+      else op = 0.12;
+    }
+    if (state.hover === w.id && !(sel?.type === 'wire' && sel.id === w.id)) { em = 0x5a6670; op = Math.max(op, 0.9); }
+    const m = w.mesh.material; m.opacity = op; m.depthWrite = op > 0.5; m.emissive.set(em); m.emissiveIntensity = ei;
+  });
+  const touched = sel?.type === 'wire' && WMAP[sel.id] ? endsOf(WMAP[sel.id].circuit) : [];
+  compMeshes.forEach(m => {
+    const id = m.userData.id, isSel = sel?.type === 'comp' && sel.id === id, t = touched.includes(id);
+    m.material.emissive.set(isSel ? 0xf2a531 : t ? 0x7a5210 : 0x000000);
+    m.material.opacity = sel && !isSel && !t ? 0.3 : 0.9;
+  });
+}
+
+// ---------- Боковая панель ----------
+function renderSources() {
+  $('#source').innerHTML = SOURCES.map(s => `<option value="${s.id}" ${s.id === state.src ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  $('#srcSub').textContent = SOURCES.find(s => s.id === state.src).sub;
+}
+function renderHarnesses() {
+  $('#harnessList').innerHTML = HARNESSES.map(h => `<label class="h-row"><input type="checkbox" data-h="${h.id}" ${state.visible.has(h.id) ? 'checked' : ''}>
+    <div><b><span class="dot" style="background:${h.color}"></span>${h.name}</b><small>${h.sub}</small></div>
+    <span class="cnt">${WIRES.filter(w => w.circuit.h === h.id).length}</span></label>`).join('');
+}
+function renderList() {
+  const html = HARNESSES.filter(h => state.visible.has(h.id)).map(h => {
+    const items = WIRES.filter(w => w.circuit.h === h.id && matches(w));
+    if (!items.length) return '';
+    return `<div class="wl-group">${h.name} · ${h.cat}</div>` + items.map(w => `<button class="wl-item ${state.sel?.id === w.id ? 'sel' : ''}" data-w="${w.id}" title="${esc(w.circuit.name + ': ' + w.name)}">
+      ${swatch(w.color)}<span>${w.circuit.wires.length > 1 ? `<b style="font-weight:500">${esc(w.circuit.name)}</b> · ${esc(w.name)}` : esc(w.circuit.name)}</span><span class="pin">${w.pin ? '#' + w.pin : ''}</span></button>`).join('');
+  }).join('');
+  $('#wireList').innerHTML = html || '<p style="padding:16px;color:var(--muted)">Ничего не найдено. Измените запрос или включите жгуты выше.</p>';
+}
+
+// ---------- Карточка ----------
+const drawer = $('#drawer');
+const refList = keys => `<ol class="refs">${[...new Set(keys)].map(k => `<li><a href="${REFS[k].u}" target="_blank" rel="noopener">${esc(REFS[k].t)}</a></li>`).join('')}</ol>`;
+function renderDrawer() {
+  const sel = state.sel;
+  drawer.classList.toggle('empty', !sel);
+  if (!sel) return renderIntro();
+  if (sel.type === 'comp') return renderComp(COMP[sel.id]);
+  const w = WMAP[sel.id], c = w.circuit, h = HMAP[c.h], src = SOURCES.find(s => s.id === state.src);
+  drawer.innerHTML = `<div class="grab" data-grab="drawer"></div><div class="card">
+    <div>
+      <div class="eyebrow"><span class="chip"><span class="dot" style="background:${h.color};margin:0"></span>${h.name}</span><span>${h.cat}</span><button class="close" data-close aria-label="Закрыть">×</button></div>
+      <h2>${esc(w.name)}</h2>
+      ${c.wires.length > 1 ? `<div style="color:var(--muted);margin-top:2px">Цепь: ${esc(c.name)}</div>` : ''}
+    </div>
+    <div class="bigswatch">${swatch(w.color)}<div><b>${cap(colorName(w.color))}</b><small class="mono">${w.color === '?' ? 'проверьте по месту' : w.color} · ${c.h === 'hv' ? 'Ø ' + w.section + ' мм' : w.section + ' мм²'} · трасса ≈ ${(w.len * 1.15 + 0.15).toFixed(1)} м</small></div></div>
+    ${w.pin ? `<div class="pinbox"><span class="num">${w.pin}</span><div><b>Контакт ЭБУ MP7.0</b><small>${esc(PINOUT[w.pin] || '—')}</small></div></div>` : ''}
+    <div class="ends"><div class="end"><span>Откуда</span><span>${esc(w.from)}</span></div><div class="end"><span>Куда</span><span>${esc(w.to)}</span></div></div>
+    ${w.note ? `<div class="warnbox">${esc(w.note)}</div>` : ''}
+    <section><h3>Фишки и контакты</h3><ul class="conns">
+      ${w.pin ? `<li><button data-conn="ECU">Колодка ЭБУ MP7.0</button> (55 контактов), конт. <b>${w.pin}</b></li>` : ''}
+      ${(CONN_IDX[w.id] || []).map(({ k, p }) => `<li><button data-conn="${k.id}">${esc(k.name)}</button>, конт. <b>${p}</b></li>`).join('')}
+      ${(CONN_NOTES[c.id] || []).filter(t => !/^(Колодка 3 переднего жгута|Щиток, колодка|Колодка ЭБУ)/.test(t)).map(t => `<li>${esc(t)}</li>`).join('')}
+    </ul></section>
+    <section><h3>Назначение</h3><p>${esc(c.desc)}</p></section>
+    <section><h3>Как проложен</h3><p>${esc(c.route)}</p></section>
+    <section><h3>Проверка</h3><p>${esc(c.check)}</p></section>
+    <section><h3>При замене</h3><p>${esc(c.tips)}</p></section>
+    ${c.wires.length > 1 ? `<section><h3>Все провода цепи (${c.wires.length})</h3><div class="siblings">${c.wires.map((x, i) => { const id = c.id + '/' + i; return `<button class="wl-item ${id === w.id ? 'sel' : ''}" data-w="${id}">${swatch(x.color)}<span>${esc(x.name)} <span class="mono" style="color:var(--muted)">${x.color} · ${x.section}</span></span><span class="pin">${x.pin ? '#' + x.pin : ''}</span></button>`; }).join('')}</div></section>` : ''}
+    <section><h3>Узлы на концах</h3><div class="actions">${endsOf(c).filter(id => COMP[id]).map(id => `<button class="chip" data-c="${id}">${esc(COMP[id].name)}</button>`).join('') || '<span style="color:var(--muted)">—</span>'}</div></section>
+    <div class="actions"><button class="btn primary" data-fly>Показать на модели</button><button class="btn" data-iso>${state.isolate ? 'Показать все жгуты' : 'Только этот жгут'}</button></div>
+    <section><h3>Источники · вариант «${esc(src.short)}»</h3>${refList(c.refs || [])}</section>
+  </div>`;
+}
+function renderComp(c) {
+  const ws = connectedWires(c.id);
+  drawer.innerHTML = `<div class="grab" data-grab="drawer"></div><div class="card">
+    <div><div class="eyebrow">Узел<button class="close" data-close aria-label="Закрыть">×</button></div><h2>${esc(c.name)}</h2></div>
+    ${c.desc ? `<p>${esc(c.desc)}</p>` : ''}
+    <section><h3>Подключённые провода (${ws.length})</h3><div class="siblings">${ws.map(w => `<button class="wl-item" data-w="${w.id}">${swatch(w.color)}<span>${esc(w.circuit.name)} · ${esc(w.name)}</span><span class="pin">${w.pin ? '#' + w.pin : ''}</span></button>`).join('') || '<span style="color:var(--muted)">Провода к этому узлу проходят транзитом.</span>'}</div></section>
+    <div class="actions"><button class="btn primary" data-fly>Показать на модели</button></div>
+    ${c.ref ? `<section><h3>Источники</h3>${refList(c.ref)}</section>` : ''}
+  </div>`;
+}
+function renderIntro() {
+  const src = SOURCES.find(s => s.id === state.src);
+  const used = [...new Set(WIRES.flatMap(w => parseColor(w.color)))].filter(k => k !== '?');
+  drawer.innerHTML = `<div class="card intro">
+    <div><div class="eyebrow">ВАЗ-21310 · MP7.0 · ${CIRC.length} цепей · ${WIRES.length} проводов</div><h2>Проводка Нивы 2131 в 3D</h2></div>
+    <ol>
+      <li>Крутите модель левой кнопкой мыши, колесом приближайте, правой кнопкой сдвигайте. Ползунок «Кузов» меняет прозрачность.</li>
+      <li>Нажмите на провод или узел: откроются цвет, сечение, контакт ЭБУ, трасса, проверка и источники.</li>
+      <li>Слева выберите источник данных. Источники расходятся в месте блока ЭСУД и в схеме вентиляторов.</li>
+      <li>Поиск понимает номер контакта ЭБУ: введите «48» — найдётся ДПКВ. Раскладка всех фишек — кнопка «Разъёмы» вверху.</li>
+      <li>На телефоне и планшете: один палец вращает, два пальца приближают и сдвигают, тап по проводу открывает описание, двойной тап — показать провод крупно.</li>
+    </ol>
+    <section><h3>Сейчас выбран</h3><p><b>${esc(src.name)}.</b> ${esc(src.sub)}</p>${refList(src.refs)}</section>
+    <section><h3>Цвета проводов (обозначения ВАЗ)</h3><div class="legend">${used.map(k => `<div>${swatch(k)}<span><b class="mono">${k}</b> ${COLOR_NAMES[k]}</span></div>`).join('')}<div>${swatch('?')}<span>цвет не подтверждён</span></div></div></section>
+    <div class="warnbox">Модель построена по чертежу ВАЗ-2131 (масштаб по базе 2700 мм) и фото 2004 года: 1680 × 1640 мм, колея 1440/1420 мм, колёса 175/80 R16. Трассы повторяют заводскую раскладку жгутов: передний по левому брызговику и рамке радиатора, ЭСУД от ЭБУ у левой боковины через левый проход щита, задний по левому порогу. Точные места хомутов приблизительные.</div>
+  </div>`;
+}
+let connTab = 'ECU';
+function renderPins() {
+  const tabs = [{ id: 'ECU', name: 'ЭБУ MP7.0 · 55 конт.' }, ...CONNECTORS.map(k => ({ id: k.id, name: k.name.replace(' — ', ' · ') }))];
+  $('#connTabs').innerHTML = tabs.map(t => `<button class="tab" role="tab" aria-selected="${t.id === connTab}" data-tab="${t.id}">${esc(t.name)}</button>`).join('');
+  const link = w => `<button data-w="${w.id}" data-pinjump>${esc(w.circuit.name)} · ${esc(w.name)}</button>`;
+  let rows = '';
+  if (connTab === 'ECU') {
+    $('#connTitle').textContent = 'Колодка ЭБУ Bosch MP7.0';
+    $('#connSub').textContent = 'По таблице chiptuner.ru, столбец MP7.0. Звёздочкой отмечены элементы Евро-3: на Евро-2 2004 года их обычно нет. Нажмите на провод, чтобы показать его на модели.';
+    const byPin = {}; WIRES.forEach(w => { if (w.pin) (byPin[w.pin] ||= []).push(w); });
+    for (let p = 1; p <= 55; p++) {
+      const ws = byPin[p] || [], fn = PINOUT[p];
+      rows += `<tr class="${fn ? '' : 'free'}"><td>${p}</td><td class="sw">${ws[0] ? swatch(ws[0].color) : ''}</td><td>${fn ? esc(fn) : 'не используется'}${ws.length ? '<br>' + ws.map(link).join('<br>') : ''}</td></tr>`;
+    }
+  } else {
+    const k = CONNECTORS.find(x => x.id === connTab);
+    $('#connTitle').textContent = k.name;
+    $('#connSub').textContent = k.sub;
+    Object.keys(k.pins).map(Number).sort((a, b) => a - b).forEach(p => {
+      const v = k.pins[p], w = typeof v === 'string' ? WMAP[v] : null;
+      const color = w ? w.color : v.c, fn = w ? (w.circuit.wires.length > 1 ? w.name : w.circuit.name) : v.fn;
+      rows += `<tr><td>${p}</td><td class="sw">${color ? swatch(color) : ''}</td><td>${esc(fn)} <span class="mono" style="color:var(--muted)">${color || ''}</span>${w ? '<br>' + link(w) : ''}</td></tr>`;
+    });
+  }
+  $('#pinTable').innerHTML = rows;
+}
+const openConn = id => { connTab = id; renderPins(); if (!$('#pinDlg').open) $('#pinDlg').showModal(); };
+
+// ---------- Выбор и камера ----------
+function select(sel, { fly = false } = {}) {
+  if (sel?.type === 'wire' && !WMAP[sel.id]) sel = null;
+  state.sel = sel;
+  if (!sel && state.isolate) { state.isolate = null; state.visible = new Set(state.savedVisible || HARNESSES.map(h => h.id)); renderHarnesses(); }
+  applyStyles(); renderDrawer(); renderList(); updateViewOffset();
+  if (sel) document.querySelector('#wireList .wl-item.sel')?.scrollIntoView({ block: 'nearest' });
+  if (sel && fly) flyTo(sel);
+  if (sel && matchMedia('(max-width: 820px)').matches) $('#side').classList.remove('open');
+}
+function boundsOf(sel) {
+  const b = new THREE.Box3();
+  if (sel.type === 'wire') b.setFromObject(WMAP[sel.id].mesh);
+  else { b.setFromObject(compMeshes.find(m => m.userData.id === sel.id)); connectedWires(sel.id).forEach(w => b.expandByPoint(w.curve.getPoint(w.circuit.pts[0] === sel.id ? 0.15 : 0.85))); }
+  return b;
+}
+let flight = null;
+function flyTo(sel) {
+  const b = boundsOf(sel), c = b.getCenter(new THREE.Vector3()), size = b.getSize(new THREE.Vector3()).length();
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  animateCam(c, c.clone().add(dir.multiplyScalar(THREE.MathUtils.clamp(size * 1.9, 1.1, 7))));
+}
+const animateCam = (t, p, dur = 650) => flight = { t0: performance.now(), dur, fromT: controls.target.clone(), toT: t, fromP: camera.position.clone(), toP: p };
+const VIEWS = {
+  iso: [[0, 0.8, 0], [4.9, 2.7, 4.4]], front: [[0, 0.8, 0], [6.6, 1.1, 0]], side: [[0, 0.8, 0], [0, 1.0, -7.2]],
+  top: [[0, 0.6, 0], [0.01, 7.6, 0]], rear: [[0, 0.8, 0], [-6.6, 1.5, 0]],
+  engine: [[1.5, 0.9, 0], [2.9, 2.1, 1.5]], cabin: [[0.6, 0.8, -0.3], [-0.6, 1.5, 0.9]],
+};
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { const [t, p] = VIEWS[b.dataset.view]; animateCam(new THREE.Vector3(...t), new THREE.Vector3(...p)); });
+
+// ---------- События ----------
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-w],[data-c],[data-close],[data-fly],[data-iso],[data-tab],[data-conn]');
+  if (!t) return;
+  if (t.dataset.tab) { connTab = t.dataset.tab; renderPins(); return; }
+  if (t.dataset.conn) { openConn(t.dataset.conn); return; }
+  if (t.dataset.w) { if ('pinjump' in t.dataset) $('#pinDlg').close(); select({ type: 'wire', id: t.dataset.w }, { fly: !!t.closest('#wireList') || 'pinjump' in t.dataset }); }
+  else if (t.dataset.c) select({ type: 'comp', id: t.dataset.c }, { fly: true });
+  else if ('close' in t.dataset) select(null);
+  else if ('fly' in t.dataset && state.sel) flyTo(state.sel);
+  else if ('iso' in t.dataset && state.sel) {
+    if (state.isolate) { state.isolate = null; state.visible = new Set(state.savedVisible); }
+    else { state.savedVisible = [...state.visible]; state.isolate = WMAP[state.sel.id].circuit.h; state.visible = new Set([state.isolate]); }
+    renderHarnesses(); renderList(); applyStyles(); renderDrawer();
+  }
+});
+$('#source').addEventListener('change', e => {
+  state.src = e.target.value;
+  try { localStorage.setItem('niva2131-src', state.src); } catch {}
+  prepareData(); placeComponents(); buildWires(); renderSources(); renderHarnesses(); renderPins();
+  select(state.sel);
+});
+$('#harnessList').addEventListener('change', e => {
+  const h = e.target.dataset.h; if (!h) return;
+  e.target.checked ? state.visible.add(h) : state.visible.delete(h);
+  state.isolate = null; renderList(); applyStyles();
+});
+$('#search').addEventListener('input', e => { state.query = e.target.value; renderList(); applyStyles(); });
+$('#opacity').addEventListener('input', e => setBodyOpacity(+e.target.value));
+const toggle = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
+toggle('#tMech', on => car.groups.mech.visible = on);
+toggle('#tInt', on => car.groups.interior.visible = on);
+toggle('#tComp', on => compGroup.visible = on);
+toggle('#tLabels', on => stage.classList.toggle('no-labels', !on));
+$('#toggleSide').onclick = () => { $('#side').classList.toggle('open'); updateViewOffset(); };
+$('#openPins').onclick = () => openConn(connTab);
+$('#pinClose').onclick = () => $('#pinDlg').close();
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('#pinDlg').open) select(null);
+  if ((e.key === 'h' || e.key === 'р' || e.key === 'H' || e.key === 'Р') && !e.target.closest('input, select, textarea') && !$('#pinDlg').open) setUIHidden(!document.body.classList.contains('ui-hidden'));
+});
+// Скрытие всех меню: остаётся только 3D-сцена и кнопка «Показать меню»
+function setUIHidden(on) {
+  document.body.classList.toggle('ui-hidden', on);
+  try { localStorage.setItem('niva2131-ui-hidden', on ? '1' : ''); } catch {}
+  requestAnimationFrame(() => { resize(); updateViewOffset(); });
+}
+$('#hideUI').onclick = () => setUIHidden(true);
+$('#showUI').onclick = () => setUIHidden(false);
+
+// Наведение и клики по сцене
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), tip = $('#tip');
+function hit(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const hits = ray.intersectObjects([...pickMeshes.filter(m => m.visible), ...(compGroup.visible ? compMeshes : [])], false);
+  if (!hits.length) return null;
+  const wh = hits.find(h => h.object.userData.type === 'wire');
+  return (wh && wh.distance - hits[0].distance < 0.15 ? wh : hits[0]).object.userData;
+}
+// Касания: тап — выбрать, двойной тап — показать крупно (или сбросить вид), долгое нажатие — подсказка
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+const active = new Map();
+let down = null, lastTap = { t: 0, x: 0, y: 0 }, pressTimer = 0;
+// На сенсоре ищем провод и вокруг точки касания: палец толще курсора
+function hitNear(ev, radius) {
+  const h = hit(ev); if (h || !radius) return h;
+  for (const r of [radius / 2, radius]) for (let a = 0; a < 8; a++) {
+    const p = { clientX: ev.clientX + Math.cos(a * Math.PI / 4) * r, clientY: ev.clientY + Math.sin(a * Math.PI / 4) * r };
+    const hh = hit(p); if (hh) return hh;
+  }
+  return null;
+}
+function showTip(h, x, y) {
+  const r = stage.getBoundingClientRect();
+  if (!h) { tip.hidden = true; return; }
+  if (h.type === 'wire') { const w = WMAP[h.id]; tip.innerHTML = `${esc(w.circuit.wires.length > 1 ? w.circuit.name + ' · ' + w.name : w.name)}<small>${w.color === '?' ? 'цвет не подтверждён' : w.color + ' · ' + colorName(w.color)} · ${w.section}${w.circuit.h === 'hv' ? ' мм' : ' мм²'}${w.pin ? ' · конт. ' + w.pin : ''}</small>`; }
+  else tip.innerHTML = `${esc(COMP[h.id].name)}<small>узел · ${connectedWires(h.id).length} проводов</small>`;
+  tip.hidden = false; tip.style.left = (x - r.left) + 'px'; tip.style.top = (y - r.top) + 'px';
+}
+renderer.domElement.addEventListener('pointerdown', e => {
+  active.set(e.pointerId, e);
+  if (active.size > 1) { down = null; clearTimeout(pressTimer); tip.hidden = true; return; }
+  down = { x: e.clientX, y: e.clientY, t: performance.now(), type: e.pointerType, long: false };
+  if (e.pointerType !== 'mouse') {
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => { if (!down) return; down.long = true; const h = hitNear(e, 22); state.hover = h?.type === 'wire' ? h.id : null; applyStyles(); showTip(h, e.clientX, e.clientY); navigator.vibrate?.(10); }, 450);
+  }
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (active.has(e.pointerId)) active.set(e.pointerId, e);
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > (down.type === 'mouse' ? 5 : 10)) { clearTimeout(pressTimer); if (!down.long) down = null; }
+});
+const endPointer = e => {
+  active.delete(e.pointerId); clearTimeout(pressTimer);
+  if (!down || e.type === 'pointercancel') { down = null; return; }
+  const d = down; down = null;
+  if (d.type !== 'mouse' && d.long) { setTimeout(() => { tip.hidden = true; state.hover = null; applyStyles(); }, 1200); }
+  const touch = d.type !== 'mouse';
+  const h = hitNear(e, touch || IS_TOUCH ? 22 : 4);
+  const now = performance.now();
+  const dbl = touch && now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+  lastTap = dbl ? { t: 0, x: 0, y: 0 } : { t: now, x: e.clientX, y: e.clientY };
+  if (dbl) { if (h) select({ type: h.type, id: h.id }, { fly: true }); else { const [t, p] = VIEWS.iso; animateCam(new THREE.Vector3(...t), new THREE.Vector3(...p)); } return; }
+  select(h ? { type: h.type, id: h.id } : null);
+  if (touch && h) $('#drawer').classList.remove('collapsed');
+  if (document.body.classList.contains('ui-hidden')) { showTip(h, e.clientX, e.clientY); clearTimeout(endPointer.t); endPointer.t = setTimeout(() => { tip.hidden = true; }, 2500); }
+};
+renderer.domElement.addEventListener('pointerup', endPointer);
+renderer.domElement.addEventListener('pointercancel', endPointer);
+renderer.domElement.addEventListener('contextmenu', e => { if (IS_TOUCH) e.preventDefault(); });
+
+// Шторки на телефоне: тап по ручке сворачивает/разворачивает, перетаскивание меняет высоту
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest('[data-grab]'); if (!g) return;
+  const sheet = g.dataset.grab === 'side' ? $('#side') : $('#drawer');
+  const startY = e.clientY, startH = sheet.getBoundingClientRect().height, maxH = $('main').getBoundingClientRect().height;
+  let moved = false;
+  g.setPointerCapture(e.pointerId);
+  sheet.style.transition = 'none';
+  const move = ev => { const dy = startY - ev.clientY; if (Math.abs(dy) > 6) moved = true; if (moved) { sheet.classList.remove('collapsed'); sheet.style.height = Math.max(76, Math.min(maxH - 8, startH + dy)) + 'px'; } };
+  const up = () => {
+    g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); g.removeEventListener('pointercancel', up);
+    sheet.style.transition = '';
+    if (!moved) { if (sheet.id === 'side') { sheet.classList.remove('open'); sheet.style.height = ''; } else sheet.classList.toggle('collapsed'); return; }
+    const h = sheet.getBoundingClientRect().height;
+    if (h < 120) { sheet.style.height = ''; if (sheet.id === 'side') sheet.classList.remove('open'); else sheet.classList.add('collapsed'); }
+  };
+  g.addEventListener('pointermove', move); g.addEventListener('pointerup', up); g.addEventListener('pointercancel', up);
+});
+if (IS_TOUCH) $('#hint').textContent = '1 палец — вращать · 2 пальца — зум и сдвиг · тап — описание · двойной тап — крупно';
+
+let hoverRaf = 0;
+renderer.domElement.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  if (e.buttons) { tip.hidden = true; return; }
+  cancelAnimationFrame(hoverRaf);
+  hoverRaf = requestAnimationFrame(() => {
+    const h = hit(e), nh = h?.type === 'wire' ? h.id : null;
+    if (nh !== state.hover) { state.hover = nh; applyStyles(); }
+    renderer.domElement.style.cursor = h ? 'pointer' : '';
+    showTip(h, e.clientX, e.clientY);
+  });
+});
+renderer.domElement.addEventListener('pointerleave', e => { if (e.pointerType !== 'mouse') return; tip.hidden = true; if (state.hover) { state.hover = null; applyStyles(); } });
+
+// ---------- Цикл ----------
+function resize() {
+  const r = stage.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false); labelRenderer.setSize(r.width, r.height);
+  renderer.domElement.style.width = r.width + 'px'; renderer.domElement.style.height = r.height + 'px';
+  camera.aspect = r.width / Math.max(1, r.height);
+  // В портретной ориентации расширяем угол обзора, чтобы машина целиком помещалась по ширине
+  camera.fov = camera.aspect < 1.2 ? Math.min(80, 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(19)) * 1.2 / camera.aspect))) : 38;
+  updateViewOffset();
+}
+// На телефоне открытая шторка закрывает низ экрана: сдвигаем картинку вверх, в видимую часть
+function updateViewOffset() {
+  const r = stage.getBoundingClientRect(), d = $('#drawer'), sd = $('#side');
+  const mobile = matchMedia('(max-width: 820px)').matches;
+  let cover = 0;
+  if (mobile) {
+    if (!d.classList.contains('empty') && getComputedStyle(d).display !== 'none') cover = d.getBoundingClientRect().height;
+    if (sd.classList.contains('open')) cover = Math.max(cover, sd.getBoundingClientRect().height);
+  }
+  if (cover > 80) camera.setViewOffset(r.width, r.height, 0, Math.min(cover, r.height * 0.7) / 2, r.width, r.height);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(() => updateViewOffset()).observe($('#drawer'));
+new ResizeObserver(() => updateViewOffset()).observe($('#side'));
+new ResizeObserver(resize).observe(stage);
+const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+renderer.setAnimationLoop(now => {
+  if (flight) {
+    const k = Math.min(1, (now - flight.t0) / flight.dur), e = ease(k);
+    controls.target.lerpVectors(flight.fromT, flight.toT, e); camera.position.lerpVectors(flight.fromP, flight.toP, e);
+    if (k >= 1) flight = null;
+  }
+  controls.update();
+  renderer.render(scene, camera); labelRenderer.render(scene, camera);
+});
+
+prepareData(); placeComponents(); buildWires();
+try { if (localStorage.getItem('niva2131-ui-hidden')) document.body.classList.add('ui-hidden'); } catch {}
+resize(); renderSources(); renderHarnesses(); renderList(); renderDrawer(); renderPins(); applyStyles();
+$('#loading').remove();
+</script>

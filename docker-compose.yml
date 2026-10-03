@@ -1,0 +1,8 @@
+services:
+  x-car:
+    build: .
+    image: x-car
+    container_name: x-car
+    ports:
+      - "1865:1865"
+    restart: unless-stopped
