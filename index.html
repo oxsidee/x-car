@@ -78,6 +78,7 @@ aside { background: var(--panel); min-height: 0; display: flex; flex-direction: 
 .toolbar button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .toolbar label { display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; color: var(--muted); }
 .toolbar input[type=range] { width: 90px; accent-color: var(--accent); }
+.no-model { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 32px); padding: 10px 14px; border-radius: 10px; background: #3a1d1d; color: #ffd9d4; font-size: 13px; }
 .hint { position: absolute; left: 12px; bottom: 12px; font: 11.5px var(--f-mono); color: var(--muted); pointer-events: none; padding-bottom: env(safe-area-inset-bottom, 0px); }
 #tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 6px 9px; border-radius: 6px; font-size: 12.5px; white-space: nowrap; transform: translate(12px, 12px); z-index: 5; }
 #tip small { color: var(--muted); display: block; font: 11px var(--f-mono); }
@@ -244,7 +245,6 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <label for="opacity">Кузов <input id="opacity" type="range" min="0" max="1" step="0.01" value="0.3"></label>
           <button id="tMech" aria-pressed="true" title="Двигатель, КПП, мосты, выпуск">Агрегаты</button>
           <button id="tInt" aria-pressed="true" title="Панель, сиденья, пол">Салон</button>
-          <button id="tModel" aria-pressed="true" title="Подробная модель кузова или схематичная" hidden>Подробная</button>
           <button id="tComp" aria-pressed="true" title="Датчики, фары, блоки">Узлы</button>
           <button id="tLabels" aria-pressed="false">Подписи</button>
           <button id="tWires" aria-pressed="true" title="Все жгуты проводов">Провода</button>
@@ -252,6 +252,7 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <button id="tBounds" aria-pressed="true" title="Контуры и заливка меток запчастей">Границы</button>
         </div>
       </div>
+      <div class="no-model" id="noModel" hidden>Нет файла модели <code>models/niva.glb</code> — кузов не показан. Скопируйте модель на сервер (см. README).</div>
       <div class="hint" id="hint">ЛКМ — вращать · ПКМ — сдвигать · колесо — зум · клик по проводу — описание</div>
       <div id="tip" hidden></div>
     </div>
@@ -285,7 +286,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { buildNiva } from './model.js';
+import { buildMaterials, buildAggregates } from './model.js';
 
 const D = window.NIVA;
 const { HARNESSES, COMPONENTS, CIRCUITS, PINOUT, CONNECTORS, CONN_NOTES, COLOR_NAMES, COLOR_HEX, SOURCES, REFS } = D;
@@ -352,7 +353,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 controls.minDistance = 0.4; controls.maxDistance = 14;
 controls.target.set(0, 0.8, 0);
-if (location.hash === '#dev') window.__niva = { camera, controls, audit: () => ({ wires: WIRES.filter(w => w.pushed > 0.03).map(w => [w.id, +w.pushed.toFixed(3)]).sort((a, b) => b[1] - a[1]), parts: PARTS.filter(p => p.pushed > 0.03).map(p => [p.id, +p.pushed.toFixed(3)]), linked: Object.keys(glb.links || {}), unlinked: MODEL_LINKS.filter(l => !glb.links?.[l.id]).map(l => l.id) }), dbg: () => ({ contain, WARP, nodePos, WMAP, ENV, PMAP, hit, glb, compOverlays }) };
+if (location.hash === '#dev') window.__niva = { camera, controls, audit: () => ({ wires: WIRES.filter(w => w.pushed > 0.03).map(w => [w.id, +w.pushed.toFixed(3)]).sort((a, b) => b[1] - a[1]), parts: PARTS.filter(p => p.pushed > 0.03).map(p => [p.id, +p.pushed.toFixed(3)]), linked: Object.keys(glb.links || {}), unlinked: MODEL_LINKS.filter(l => !glb.links?.[l.id]).map(l => l.id) }), dbg: () => ({ contain, WARP, nodePos, WMAP, ENV, PMAP, hit, glb, compMeshes }) };
 camera.position.set(4.9, 2.7, 4.4);
 
 scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x1a1410, 0.7));
@@ -361,12 +362,12 @@ const fill = new THREE.DirectionalLight(0x9fb8ff, 0.45); fill.position.set(-4, 3
 scene.add(new THREE.GridHelper(12, 48, 0x2a353d, 0x1a2228));
 { const sh = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })); sh.scale.set(2.5, 1.05, 1); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.002; scene.add(sh); }
 
-const car = buildNiva();
-scene.add(car.root);
-const MAT = car.materials;
+const MAT = buildMaterials();
+const aggregates = buildAggregates(MAT);   // двигатель, КПП, мосты, рулевое — их в модели кузова нет
+scene.add(aggregates);
 function setBodyOpacity(v) {
   MAT.paint.opacity = v * 0.9; MAT.paint.depthWrite = v > 0.85;
-  MAT.edge.opacity = 0.2 + v * 0.5; MAT.seam.opacity = 0.2 + v * 0.5;
+  MAT.edge.opacity = 0.2 + v * 0.5;
   MAT.glass.opacity = 0.05 + v * 0.2;
   MAT.plastic.opacity = 0.3 + v * 0.7; MAT.plastic.depthWrite = v > 0.85;
   MAT.chrome.opacity = 0.45 + v * 0.55;
@@ -464,6 +465,17 @@ async function loadDetailedModel() {
   put('REP_L', 'light_side', -1); put('REP_R', 'light_side', 1);
   put('RL_L', 'light_rear', -1, b => [b.min.x + 0.03, ctr(b).y, ctr(b).z]); put('RL_R', 'light_rear', 1, b => [b.min.x + 0.03, ctr(b).y, ctr(b).z]);
   put('STOP3', 'light_stop', 0);
+  // Моторчик заднего очистителя — у оси щётки (верхний конец рычага), фонари номера — под накладкой с ручкой двери задка,
+  // клеммы обогрева — по краям заднего стекла
+  const verts = name => { const o = model.getObjectByName(name), out = []; o?.traverse(m => { if (!m.isMesh) return; const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) out.push(new THREE.Vector3().fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld)); }); return out; };
+  const wv = verts('wiper_rear');
+  if (wv.length) { const ym = Math.max(...wv.map(v => v.y)), top = wv.filter(v => v.y > ym - 0.03), c = top.reduce((s, v) => s.add(v), new THREE.Vector3()).divideScalar(top.length); SNAP.RWIPER = [c.x + 0.05, c.y, c.z]; }
+  put('LIC', 'detail_door_handle_rear', 0, b => [b.max.x + 0.025, b.min.y + 0.005, ctr(b).z]);
+  const gv = verts('window_rear');
+  if (gv.length) { const y0 = Math.min(...gv.map(v => v.y)) + 0.10, row = gv.filter(v => Math.abs(v.y - y0) < 0.03);
+    const l = row.reduce((m, v) => v.z < m.z ? v : m), r = row.reduce((m, v) => v.z > m.z ? v : m);
+    SNAP.RWH_L = [l.x + 0.03, y0, l.z + 0.03]; SNAP.RWH_R = [r.x + 0.03, y0, r.z - 0.03]; }
   const fx = piecewise(Object.keys(SCHEMA.x).map(k => [SCHEMA.x[k], A.x[k]]));
   const fy = piecewise(Object.keys(SCHEMA.y).map(k => [SCHEMA.y[k], A.y[k]]));
   const fz = piecewise(Object.keys(SCHEMA.z).map(k => [SCHEMA.z[k], A.z[k]]));
@@ -593,6 +605,11 @@ const MODEL_LINKS = [
     { id: 'doorrear_' + s, mesh: BODYM, x: ['dR', 'dM'], y: [0.40, 1.62], face: 'side' },
     { id: 'quarter_' + s, mesh: BODYM, x: [-9, 'dR'], y: [0.40, 1.62], face: 'side' },
   ]),
+  // Расширители арок — кромка кузова вокруг колеса, подкрылки — внутренние стенки арок
+  ...['FL', 'FR', 'RL', 'RR'].flatMap(k => [
+    { id: 'flare_' + k, mesh: BODYM, arch: k[0], r: [0.40, 0.52], y: [0.30, 1.2], face: 'side' },
+    { id: 'liner_' + k, mesh: /^body_parts_underbody$/, arch: k[0], r: [0.25, 0.50] },
+  ]),
   // Электрооборудование: фары, подфарники, повторители, фонари
   ...['L', 'R'].flatMap(s => [
     { id: 'HL_' + s, comp: true, mesh: /^light_front(_cover|_cover_part|_lamp|_lamp_part|_reflector)?$/ },
@@ -625,6 +642,7 @@ function linkModelParts(meshes) {
   const rng = (r, k) => r && r.map(v => typeof v === 'string' ? SEAM[v] : WARP([0, 0, 0].map((_, i) => i === k ? v : 0))[k]);
   MODEL_LINKS.forEach(l => {
     l.side = /_(L|FL|RL)$/.test(l.id) ? -1 : /_(R|FR|RR)$/.test(l.id) ? 1 : 0;
+    if (l.arch && l.side === 0) l.side = /R$/.test(l.id) ? 1 : -1;
     l.wx = rng(l.x, 0); l.wy = rng(l.y, 1); l.wz = rng(l.z, 2); l.buf = [];
   });
   const cen = new THREE.Vector3(), nrm = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
@@ -641,6 +659,7 @@ function linkModelParts(meshes) {
         if (poly.length < 3) return;
         cen.set(0, 0, 0); poly.forEach(p => cen.add(p)); cen.divideScalar(poly.length);
         if ((l.side && Math.sign(cen.z) !== l.side) || !inR(l.wy, cen.y) || !inR(l.wz, cen.z)) return;
+        if (l.arch && !inR(l.r, Math.hypot(cen.x - (l.arch === 'F' ? glb.anchors.x.frontAxle : glb.anchors.x.rearAxle), cen.y - glb.anchors.y.wheel))) return;
         for (let i = 1; i < poly.length - 1; i++) l.buf.push(poly[0].x, poly[0].y, poly[0].z, poly[i].x, poly[i].y, poly[i].z, poly[i + 1].x, poly[i + 1].y, poly[i + 1].z);
       });
     });
@@ -664,51 +683,56 @@ function linkMesh(id, color, userData) {
   return m;
 }
 const HAS_MODEL = await loadDetailedModel();
-// Схематичная модель натягивается на подробную тем же пересчётом
-if (HAS_MODEL) {
-  const done = new Set(), inner = new Set();
-  // Агрегаты (двигатель, шасси) дополнительно вдавливаются внутрь оболочки — чтобы ничего не торчало сквозь капот и крылья
-  car.groups.mech.traverse(o => o.geometry && inner.add(o.geometry));
-  car.root.traverse(o => {
-    const g = o.geometry; if (!g || done.has(g)) return; done.add(g);
-    const p = g.attributes.position, fit = inner.has(g) ? v => contain(v, 0.012) : v => v;
-    for (let i = 0; i < p.count; i++) { const [x, y, z] = fit(WARP([p.getX(i), p.getY(i), p.getZ(i)])); p.setXYZ(i, x, y, z); }
-    p.needsUpdate = true; g.computeBoundingSphere(); g.computeBoundingBox();
-  });
+if (!HAS_MODEL) $('#noModel').hidden = false;
+// Агрегаты натягиваются на модель тем же пересчётом и вдавливаются внутрь оболочки — ничего не торчит сквозь капот и крылья
+aggregates.traverse(o => {
+  const g = o.geometry; if (!g) return;
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const [x, y, z] = contain(WARP([p.getX(i), p.getY(i), p.getZ(i)]), 0.012); p.setXYZ(i, x, y, z); }
+  p.needsUpdate = true; g.computeVertexNormals(); g.computeBoundingSphere(); g.computeBoundingBox();
+});
+// Коробка-метка детали, подрезанная по оболочке кузова: углы вдавливаются внутрь, коробка ужимается
+function fitBox(pos, size, m = 0.01) {
+  let c = pos, sz = size;
+  for (let it = 0; it < 4; it++) {          // несколько проходов: ужатая коробка может снова задеть кузов другим углом
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let k = 0; k < 8; k++) {
+      const q = contain(c.map((v, i) => v + ((k >> i) & 1 ? 0.5 : -0.5) * sz[i]), m);
+      q.forEach((v, i) => { lo[i] = Math.min(lo[i], v); hi[i] = Math.max(hi[i], v); });
+    }
+    c = lo.map((v, i) => (v + hi[i]) / 2); sz = sz.map((v, i) => Math.max(v * 0.2, Math.min(v, hi[i] - lo[i])));
+  }
+  return { pos: c, scale: size.map((v, i) => v > 0 ? sz[i] / v : 1) };
 }
-state.detailed = HAS_MODEL;
-const isDetailed = () => HAS_MODEL && state.detailed;
 function applyModelMode() {
-  const det = HAS_MODEL && state.detailed;
-  if (glb.root) glb.root.visible = det;
-  ['body', 'trim', 'glass', 'wheels'].forEach(k => car.groups[k].visible = !det);
-  car.groups.dup.visible = !det && $('#tMech')?.getAttribute('aria-pressed') !== 'false';
-  PARTS.forEach(p => p.mesh = (det && p.model) || p.box);
-  if (WIRES.length && WIRES[0].mesh) applyStyles();
   const intOn = $('#tInt')?.getAttribute('aria-pressed') !== 'false';
-  car.groups.interior.visible = intOn && !det;
   glb.meshes?.forEach(m => { if (m.userData.grp === 'interior') m.visible = intOn; });
 }
 
 // ---------- Узлы ----------
 const compGroup = new THREE.Group(); scene.add(compGroup);
 const KIND_COLOR = { power: 0xd8645f, cabin: 0xb39cf2, light: 0xe9d9a6, engine: 0x9fb0bd, rear: 0x86b3e8, body: 0xc3d36a };
-const compMeshes = [], compOverlays = [];
+const compMeshes = [];
 COMPONENTS.forEach(c => {
-  const mat = new THREE.MeshStandardMaterial({ color: KIND_COLOR[c.kind] || 0x9fb0bd, roughness: 0.55, metalness: 0.1, transparent: true, opacity: 0.9 });
-  const m = new THREE.Mesh(new THREE.BoxGeometry(...c.size.map(v => Math.max(v, 0.03))), mat);
-  m.userData = { type: 'comp', id: c.id };
-  compGroup.add(m); compMeshes.push(m);
-  const ov = linkMesh(c.id, KIND_COLOR[c.kind] || 0x9fb0bd, { type: 'comp', id: c.id });
-  if (ov) { m.userData.model = false; m.userData.ov = ov; compGroup.add(ov); compOverlays.push(ov); }
+  const color = KIND_COLOR[c.kind] || 0x9fb0bd;
+  // Фары и фонари — это детали самой модели; остальные узлы — коробки по размеру
+  let m = linkMesh(c.id, color, { type: 'comp', id: c.id });
   const el = document.createElement('div'); el.className = 'lbl'; el.textContent = c.name.replace(/ \(.+\)/, '');
-  const lab = new CSS2DObject(el); lab.position.set(0, Math.max(c.size[1], 0.03) / 2 + 0.03, 0); m.add(lab);
+  const lab = new CSS2DObject(el);
+  if (m) { const b = m.geometry.boundingBox; lab.position.set((b.min.x + b.max.x) / 2, b.max.y + 0.03, (b.min.z + b.max.z) / 2); }
+  else {
+    const size = c.size.map(v => Math.max(v, 0.03));
+    m = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, transparent: true, opacity: 0.9 }));
+    m.userData = { type: 'comp', id: c.id, size, vol: size[0] * size[1] * size[2] };
+    lab.position.set(0, size[1] / 2 + 0.03, 0);
+  }
+  m.add(lab); compGroup.add(m); compMeshes.push(m);
 });
 // ---------- Запчасти: 3D-метки по слоям ----------
 const partGroups = {}, partMeshes = [];
 PLAYERS.filter(l => l.id !== 'elec').forEach(l => { partGroups[l.id] = new THREE.Group(); scene.add(partGroups[l.id]); });
 partGroups.elec = compGroup;
-const OUTER_LAYERS = new Set(['body', 'doors', 'wheels', 'fsusp', 'rsusp', 'axles', 'driveline', 'brakes', 'exhaust']);
+const OUTER_LAYERS = new Set(['wheels', 'fsusp', 'rsusp', 'axles', 'driveline', 'brakes', 'exhaust']), SKIN_LAYERS = new Set(['body', 'doors']);
 function partGeo(p) {
   const [a, b, c] = p.size;
   switch (p.shape) {
@@ -722,26 +746,31 @@ function partGeo(p) {
 PARTS.forEach(p => {
   const col = new THREE.Color(PLMAP[p.layer].color);
   const mat = new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(0), transparent: true, opacity: 0.09, depthWrite: false, roughness: 0.6 });
+  const raw = WARP(p.pos);
+  // Деталь есть в модели — схематичная метка не нужна: выбирается и подсвечивается сама деталь модели
+  const ov = linkMesh(p.id, col, { type: 'part', id: p.id });
+  if (ov) { p.pos = raw; p.pushed = 0; partGroups[p.layer].add(ov); partMeshes.push(ov); p.mesh = ov; return; }
   const geo = partGeo(p), m = new THREE.Mesh(geo, mat);
-  // Внутрь оболочки вдавливаются только агрегаты под капотом и в салоне; кузовные детали, колёса и подвеска и так снаружи
-  const raw = WARP(p.pos); p.pos = OUTER_LAYERS.has(p.layer) ? raw : contain(raw, 0.01);
-  p.pushed = Math.hypot(raw[0] - p.pos[0], raw[1] - p.pos[1], raw[2] - p.pos[2]);
-  m.position.set(...p.pos);
+  // Метки подрезаются по кузову: кузовные детали — заподлицо с поверхностью, агрегаты и салон — внутри.
+  // Колёса, подвеска, тормоза и выпуск стоят в арках и под днищем — их не трогаем
+  const fit = OUTER_LAYERS.has(p.layer) ? { pos: raw, scale: [1, 1, 1] } : fitBox(raw, p.size, SKIN_LAYERS.has(p.layer) ? -0.005 : 0.01);
+  p.pos = fit.pos; p.pushed = Math.hypot(raw[0] - p.pos[0], raw[1] - p.pos[1], raw[2] - p.pos[2]);
+  m.position.set(...p.pos); m.scale.set(...fit.scale);
   m.userData = { type: 'part', id: p.id, vol: p.size[0] * p.size[1] * p.size[2] };
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.4 }));
   m.add(edges); m.userData.edges = edges;
-  partGroups[p.layer].add(m); partMeshes.push(m); p.mesh = p.box = m;
-  // Деталь есть в подробной модели — при ней вместо метки подсвечивается сама деталь
-  const ov = linkMesh(p.id, col, { type: 'part', id: p.id });
-  if (ov) { m.userData.model = false; partGroups[p.layer].add(ov); partMeshes.push(ov); p.model = ov; }
+  partGroups[p.layer].add(m); partMeshes.push(m); p.mesh = m;
 });
-compMeshes.forEach(m => { const c = m.geometry.parameters; m.userData.vol = c.width * c.height * c.depth; });
 function applyLayerVisibility() {
   PLAYERS.forEach(l => { partGroups[l.id].visible = state.layers.has(l.id); });
   const pb = document.querySelector('#tParts'); if (pb) pb.setAttribute('aria-pressed', state.layers.size > 0);
   const cb = document.querySelector('#tComp'); if (cb) cb.setAttribute('aria-pressed', state.layers.has('elec'));
 }
-const placeComponents = () => compMeshes.forEach(m => m.position.set(...nodePos(m.userData.id)));
+const placeComponents = () => compMeshes.forEach(m => {
+  if (m.userData.model) return;
+  const f = fitBox(nodePos(m.userData.id), m.userData.size, 0.008);
+  m.position.set(...f.pos); m.scale.set(...f.scale);
+});
 
 // ---------- Провода ----------
 const V3 = p => new THREE.Vector3(...(typeof p === 'string' ? nodePos(p) : contain(WARP(p))));
@@ -764,7 +793,7 @@ function harnessCurve(pts) {
   const out = [pts[0]];
   for (let i = 1; i < pts.length - 1; i++) {
     const a = pts[i - 1], b = pts[i], c = pts[i + 1];
-    const r = Math.min(0.05, a.distanceTo(b) * 0.4, b.distanceTo(c) * 0.4);
+    const r = Math.min(0.04, a.distanceTo(b) * 0.35, b.distanceTo(c) * 0.35);
     const p0 = b.clone().addScaledVector(a.clone().sub(b).normalize(), r), p2 = b.clone().addScaledVector(c.clone().sub(b).normalize(), r);
     for (let k = 0; k <= 4; k++) { const t = k / 4, u = 1 - t; out.push(new THREE.Vector3().addScaledVector(p0, u * u).addScaledVector(b, 2 * u * t).addScaledVector(p2, t * t)); }
   }
@@ -776,37 +805,89 @@ function harnessCurve(pts) {
 }
 let pickMeshes = [];
 const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-const radiusFor = w => w.circuit.h === 'hv' ? 0.0055 : Math.min(0.012, 0.0028 + Math.sqrt(w.section) * 0.0018);
+const radiusFor = w => w.circuit.h === 'hv' ? 0.0045 : Math.min(0.008, 0.0016 + Math.sqrt(w.section) * 0.0011);
+// Ячейки плотной укладки проводов в сечении жгута (шестиугольная решётка, от центра наружу)
+const HEX = (() => { const out = []; for (let i = -9; i <= 9; i++) for (let j = -9; j <= 9; j++) out.push([i + j * 0.5, j * Math.sqrt(3) / 2]);
+  return out.sort((p, q) => (Math.hypot(...p) - Math.hypot(...q)) || (Math.atan2(p[1], p[0]) - Math.atan2(q[1], q[0]))); })();
+const sleeveGroup = new THREE.Group(); scene.add(sleeveGroup);
+const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x1b1f23, roughness: 0.8, metalness: 0.05, transparent: true, opacity: 0.88 });
+let sleeves = [];
 function buildWires() {
   wireGroup.children.slice().forEach(m => { m.geometry.dispose(); if (m.material !== pickMat) { m.material.map?.dispose(); m.material.dispose(); } wireGroup.remove(m); });
-  pickMeshes = [];
-  CIRC.forEach((c, ci) => {
-    const a = ci * 2.399, jit = new THREE.Vector3(Math.cos(a) * 0.004, Math.sin(a * 1.7) * 0.012, Math.sin(a) * 0.012);
+  sleeveGroup.children.slice().forEach(m => { m.geometry.dispose(); m.material.dispose(); sleeveGroup.remove(m); });
+  pickMeshes = []; sleeves = [];
+  // Провода, идущие через одни и те же точки трассы, укладываются плотным жгутом: у каждого своя ячейка в сечении.
+  // Порядок ячеек — по трассе цепи, поэтому провода с общей дорогой лежат рядом и расходятся только на ответвлениях.
+  const keyOf = p => typeof p === 'string' ? p : p.map(v => v.toFixed(3)).join(',');
+  const nodes = new Map(), list = [];
+  CIRC.forEach(c => {
+    const P = c.pts.map(V3), keys = c.pts.map(keyOf), sig = keys.join('>');
     c.wires.forEach((_, i) => {
-      const w = WMAP[c.id + '/' + i], n = c.wires.length;
-      const ang = (i / n) * Math.PI * 2, r = n > 1 ? 0.006 + 0.0025 * n : 0;
-      const off = new THREE.Vector3(0, Math.sin(ang) * r, Math.cos(ang) * r).add(jit);
-      const pts = c.pts.map((p, k) => V3(p).add(k > 0 && k < c.pts.length - 1 ? off : off.clone().multiplyScalar(0.35)));
-      let curve = harnessCurve(pts);
-      const rad = radiusFor(w) * (c.thick ? Math.min(1.6, c.thick) : 1);
-      // Трасса не должна выходить из кузова: вдавливаем точки внутрь оболочки модели
-      if (ENV.ok) {
-        const raw = curve.getSpacedPoints(Math.max(12, Math.round(curve.getLength() / 0.03)));
-        let pushed = 0;
-        const fit = raw.map(v => { const q = contain(v.toArray(), rad + 0.012), dd = Math.hypot(q[0] - v.x, q[1] - v.y, q[2] - v.z); if (dd > pushed) { pushed = dd; w.worstAt = [v.toArray(), q]; } return new THREE.Vector3(...q); });
-        w.pushed = pushed;
-        if (pushed > 0) curve = new THREE.CatmullRomCurve3(fit, false, 'centripetal', 0.5);
-      }
-      const len = curve.getLength(), segs = Math.max(24, Math.round(len * 70));
-      const tex = wireTexture(w.color).clone(); tex.needsUpdate = true; tex.repeat.set(Math.max(1, len * 8), 1);
-      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.45, metalness: 0.05, emissive: new THREE.Color(0), transparent: true });
-      const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, rad, 8, false), mat);
-      mesh.userData = { type: 'wire', id: w.id };
-      const pick = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, segs >> 1), Math.max(rad * 2.2, 0.014), 6, false), pickMat);
-      pick.userData = { type: 'wire', id: w.id };
-      wireGroup.add(mesh, pick); pickMeshes.push(pick);
-      Object.assign(w, { mesh, pick, curve, len });
+      const w = WMAP[c.id + '/' + i];
+      w.rad = radiusFor(w) * (c.thick ? Math.min(1.6, c.thick) : 1);
+      list.push({ w, P, keys, sig });
+      keys.forEach((k, j) => {
+        let u = nodes.get(k); if (!u) nodes.set(k, u = { key: k, tan: new THREE.Vector3(), items: [] });
+        const d = P[Math.min(j + 1, P.length - 1)].clone().sub(P[Math.max(j - 1, 0)]);
+        if (d.lengthSq() > 1e-10) { d.normalize(); if (u.tan.lengthSq() && u.tan.dot(d) < 0) d.negate(); u.tan.add(d); }
+        u.items.push({ w, sig, end: j === 0 || j === P.length - 1, dir: (keys[j - 1] || '') + '|' + (keys[j + 1] || '') });
+      });
     });
+  });
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0);
+  nodes.forEach(u => {
+    const t = u.tan.lengthSq() ? u.tan.normalize() : X.clone();
+    const a = new THREE.Vector3().crossVectors(t, Math.abs(t.y) > 0.9 ? X : Y).normalize(), b = new THREE.Vector3().crossVectors(a, t);
+    const rs = u.items.map(it => it.w.rad).sort((x, y) => x - y), step = 2.05 * rs[rs.length >> 1];
+    // Соседние ячейки — проводам, идущим в одну сторону: так ответвления выходят из жгута пучком, а не вразброс
+    const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+    u.items.sort((p, q) => cmp(p.dir, q.dir) || cmp(p.sig, q.sig) || p.w.idx - q.w.idx);
+    // У разъёма узла провода сходятся в колодку
+    const comp = COMP[u.key], lim = comp ? 0.4 * [...comp.size].sort((x, y) => y - x)[1] : Infinity;
+    const ext = Math.hypot(...HEX[u.items.length - 1]) * step, k = ext > lim ? lim / ext : 1;
+    u.off = new Map(u.items.map((it, i) => [it.w.id, a.clone().multiplyScalar(HEX[i][0] * step * (it.end ? k : 1)).addScaledVector(b, HEX[i][1] * step * (it.end ? k : 1))]));
+  });
+  // Обмотка жгута: между развилками провода стянуты изолентой, на развилках и у разъёмов — открыты
+  const edges = new Map();
+  list.forEach(({ w, P, keys }) => keys.slice(1).forEach((k, j) => {
+    if (k === keys[j]) return;
+    const id = keys[j] < k ? keys[j] + '~' + k : k + '~' + keys[j];
+    let e = edges.get(id); if (!e) edges.set(id, e = { a: keys[j] < k ? keys[j] : k, wires: [], A: [], B: [] });
+    const fwd = e.a === keys[j], pa = P[fwd ? j : j + 1], pb = P[fwd ? j + 1 : j];
+    e.wires.push(w); e.A.push(pa.clone().add(nodes.get(fwd ? keys[j] : k).off.get(w.id))); e.B.push(pb.clone().add(nodes.get(fwd ? k : keys[j]).off.get(w.id)));
+  }));
+  edges.forEach(e => {
+    if (e.wires.length < 3) return;
+    const ca = e.A.reduce((s, v) => s.add(v), new THREE.Vector3()).divideScalar(e.A.length), cb = e.B.reduce((s, v) => s.add(v), new THREE.Vector3()).divideScalar(e.B.length);
+    const len = ca.distanceTo(cb), gap = Math.min(0.03, len * 0.2); if (len - 2 * gap < 0.02) return;
+    const dir = cb.clone().sub(ca).normalize(), a = ca.clone().addScaledVector(dir, gap), b = cb.clone().addScaledVector(dir, -gap);
+    const r = Math.max(...e.A.map((v, i) => Math.max(v.distanceTo(ca), e.B[i].distanceTo(cb)) + e.wires[i].rad)) + 0.002;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 14, 1, true), sleeveMat.clone());
+    m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    m.renderOrder = 2; m.userData = { type: 'sleeve', wires: e.wires };
+    sleeveGroup.add(m); sleeves.push(m);
+  });
+  list.forEach(({ w, P, keys }) => {
+    const c = w.circuit, rad = w.rad;
+    const pts = P.map((p, j) => p.clone().add(nodes.get(keys[j]).off.get(w.id)));
+    let curve = harnessCurve(pts);
+    // Страховка: трасса не должна выходить из кузова — точки вдавливаются внутрь оболочки модели
+    if (ENV.ok) {
+      const raw = curve.getSpacedPoints(Math.max(12, Math.round(curve.getLength() / 0.03)));
+      let pushed = 0;
+      const fit = raw.map(v => { const q = contain(v.toArray(), rad + 0.008), dd = Math.hypot(q[0] - v.x, q[1] - v.y, q[2] - v.z); if (dd > pushed) { pushed = dd; w.worstAt = [v.toArray(), q]; } return new THREE.Vector3(...q); });
+      w.pushed = pushed;
+      if (pushed > 0) curve = new THREE.CatmullRomCurve3(fit, false, 'centripetal', 0.5);
+    }
+    const len = curve.getLength(), segs = Math.max(24, Math.round(len * 90));
+    const tex = wireTexture(w.color).clone(); tex.needsUpdate = true; tex.repeat.set(Math.max(1, len * 8), 1);
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.45, metalness: 0.05, emissive: new THREE.Color(0), transparent: true });
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, rad, 8, false), mat);
+    mesh.userData = { type: 'wire', id: w.id };
+    const pick = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, segs >> 1), Math.max(rad * 2.2, 0.014), 6, false), pickMat);
+    pick.userData = { type: 'wire', id: w.id };
+    wireGroup.add(mesh, pick); pickMeshes.push(pick);
+    Object.assign(w, { mesh, pick, curve, len });
   });
 }
 
@@ -887,18 +968,16 @@ function applyStyles() {
     if (state.hover === w.id && !(sel?.type === 'wire' && sel.id === w.id)) { em = 0x5a6670; op = Math.max(op, 0.9); }
     const m = w.mesh.material; m.opacity = op; m.depthWrite = op > 0.5; m.emissive.set(em); m.emissiveIntensity = ei;
   });
+  sleeves.forEach(m => { const ws = m.userData.wires; m.visible = ws.some(wireVisible); const faded = sel || state.query.trim() || ws.some(w => w.id === state.hover); m.material.opacity = faded ? 0.15 : 0.88; m.material.depthWrite = !faded; });
   const touched = sel?.type === 'wire' && WMAP[sel.id] ? endsOf(WMAP[sel.id].circuit) : [];
-  const det = isDetailed();
   compMeshes.forEach(m => {
     const id = m.userData.id, isSel = sel?.type === 'comp' && sel.id === id, t = touched.includes(id);
-    m.material.emissive.set(isSel ? 0xf2a531 : t ? 0x7a5210 : 0x000000);
-    m.material.opacity = sel && !isSel && !t ? 0.3 : 0.9;
-    // Фары и фонари при подробной модели — это её детали: коробка-метка не рисуется, подпись остаётся
-    m.material.visible = !(det && m.userData.ov);
-  });
-  compOverlays.forEach(m => {
-    const id = m.userData.id, isSel = sel?.type === 'comp' && sel.id === id, t = touched.includes(id);
-    m.visible = det;
+    if (!m.userData.model) {
+      m.material.emissive.set(isSel ? 0xf2a531 : t ? 0x7a5210 : 0x000000);
+      m.material.opacity = sel && !isSel && !t ? 0.3 : 0.9;
+      return;
+    }
+    // Фары и фонари — детали модели: подсвечиваются только при выборе и наведении
     m.material.opacity = isSel ? 0.6 : t ? 0.4 : state.hover === 'comp:' + id ? 0.35 : 0;
     m.material.color.set(isSel || t ? 0xf2a531 : KIND_COLOR[COMP[id].kind] || 0x9fb0bd);
     m.material.emissive.set(isSel ? 0x7a5210 : 0x000000);
@@ -907,7 +986,7 @@ function applyStyles() {
   partMeshes.forEach(m => {
     const p = PMAP[m.userData.id], isSel = sel?.type === 'part' && sel.id === p.id, hov = state.hoverPart === p.id;
     const found = q && partMatches(p);
-    m.visible = (!q || found || isSel) && (m.userData.model === undefined || m.userData.model === det);
+    m.visible = !q || found || isSel;
     if (m.userData.model) {   // деталь модели: видна сама по себе, подсвечивается только при поиске, наведении и выборе
       m.material.opacity = isSel ? 0.6 : hov ? 0.38 : found ? 0.3 : 0;
       m.material.color.set(isSel ? 0xf2a531 : PLMAP[p.layer].color);
@@ -1099,7 +1178,7 @@ function boundsOf(sel) {
   const b = new THREE.Box3();
   if (sel.type === 'wire') b.setFromObject(WMAP[sel.id].mesh);
   else if (sel.type === 'part') b.setFromObject(PMAP[sel.id].mesh);
-  else { const cm = compMeshes.find(m => m.userData.id === sel.id); b.setFromObject(isDetailed() && cm.userData.ov ? cm.userData.ov : cm); connectedWires(sel.id).forEach(w => b.expandByPoint(w.curve.getPoint(w.circuit.pts[0] === sel.id ? 0.15 : 0.85))); }
+  else { b.setFromObject(compMeshes.find(m => m.userData.id === sel.id)); connectedWires(sel.id).forEach(w => b.expandByPoint(w.curve.getPoint(w.circuit.pts[0] === sel.id ? 0.15 : 0.85))); }
   return b;
 }
 let flight = null;
@@ -1150,9 +1229,8 @@ $('#harnessList').addEventListener('change', e => {
 $('#search').addEventListener('input', e => { state.query = e.target.value; renderList(); applyStyles(); });
 $('#opacity').addEventListener('input', e => setBodyOpacity(+e.target.value));
 const toggle = (id, fn) => { const b = $(id); b.onclick = () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); fn(on); }; };
-toggle('#tMech', on => { car.groups.mech.visible = on; applyModelMode(); });
+toggle('#tMech', on => aggregates.visible = on);
 toggle('#tInt', () => applyModelMode());
-toggle('#tModel', on => { state.detailed = on; applyModelMode(); });
 toggle('#tComp', on => { on ? state.layers.add('elec') : state.layers.delete('elec'); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
 toggle('#tWires', on => { state.visible = new Set(on ? HARNESSES.map(h => h.id) : []); state.isolate = null; renderHarnesses(); renderList(); applyStyles(); });
 toggle('#tBounds', on => { state.bounds = on; try { localStorage.setItem('niva2131-bounds', on ? '1' : '0'); } catch {} applyStyles(); });
@@ -1202,7 +1280,7 @@ function hit(ev) {
   mouse.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(mouse, camera);
   const parts = partMeshes.filter(m => m.visible && m.parent.visible);
-  const comps = compGroup.visible ? [...compMeshes.filter(m => m.material.visible), ...compOverlays.filter(m => m.visible)] : [];
+  const comps = compGroup.visible ? compMeshes : [];
   const hits = ray.intersectObjects([...pickMeshes.filter(m => m.visible), ...comps, ...parts], false);
   if (!hits.length) return null;
   const wh = hits.find(h => h.object.userData.type === 'wire');
@@ -1405,7 +1483,7 @@ renderer.setAnimationLoop(now => {
 prepareData(); placeComponents(); buildWires();
 try { if (localStorage.getItem('niva2131-ui-hidden')) document.body.classList.add('ui-hidden'); } catch {}
 applyLayerVisibility(); renderTabs(); renderLayers();
-$('#tModel').hidden = !HAS_MODEL; applyModelMode();
+applyModelMode();
 $('#tBounds').setAttribute('aria-pressed', state.bounds);
 resize(); renderSources(); renderHarnesses(); renderList(); renderDrawer(); renderPins(); applyStyles();
 $('#loading').remove();
