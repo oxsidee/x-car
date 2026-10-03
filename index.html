@@ -248,6 +248,7 @@ body.ui-hidden main { grid-template-columns: 1fr !important; }
           <button id="tLabels" aria-pressed="false">Подписи</button>
           <button id="tWires" aria-pressed="true" title="Все жгуты проводов">Провода</button>
           <button id="tParts" aria-pressed="true" title="Все слои запчастей">Запчасти</button>
+          <button id="tBounds" aria-pressed="true" title="Контуры и заливка меток запчастей">Границы</button>
         </div>
       </div>
       <div class="hint" id="hint">ЛКМ — вращать · ПКМ — сдвигать · колесо — зум · клик по проводу — описание</div>
@@ -298,9 +299,10 @@ const COMP = Object.fromEntries(COMPONENTS.map(c => [c.id, c]));
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 
-const state = { tab: 'wires', layers: new Set(PLAYERS.map(l => l.id)), src: 'f', visible: new Set(HARNESSES.map(h => h.id)), query: '', sel: null, hover: null };
+const state = { bounds: true, tab: 'wires', layers: new Set(PLAYERS.map(l => l.id)), src: 'f', visible: new Set(HARNESSES.map(h => h.id)), query: '', sel: null, hover: null };
 try { const s = localStorage.getItem('niva2131-src'); if (SOURCES.some(x => x.id === s)) state.src = s; } catch {}
 try { const l = JSON.parse(localStorage.getItem('niva2131-layers')); if (Array.isArray(l)) state.layers = new Set(l); } catch {}
+try { if (localStorage.getItem('niva2131-bounds') === '0') state.bounds = false; } catch {}
 const saveLayers = () => { try { localStorage.setItem('niva2131-layers', JSON.stringify([...state.layers])); } catch {} };
 
 // ---------- Цвета ----------
@@ -537,12 +539,12 @@ function applyStyles() {
     const p = PMAP[m.userData.id], isSel = sel?.type === 'part' && sel.id === p.id, hov = state.hoverPart === p.id;
     const found = q && partMatches(p);
     m.visible = !q || found || isSel;
-    let op = 0.09, eo = 0.4, em = 0x000000;
-    if (sel && !isSel) { op = 0.04; eo = 0.15; }
+    let op = state.bounds ? 0.09 : 0, eo = state.bounds ? 0.4 : 0, em = 0x000000;
+    if (sel && !isSel && state.bounds) { op = 0.04; eo = 0.15; }
     if (found) { op = 0.22; eo = 0.75; }
     if (hov) { op = 0.32; eo = 0.95; }
     if (isSel) { op = 0.5; eo = 1; em = 0x7a5210; }
-    m.material.opacity = op; m.material.emissive.set(em); m.userData.edges.material.opacity = eo;
+    m.material.opacity = op; m.material.emissive.set(em); m.userData.edges.material.opacity = eo; m.userData.edges.visible = eo > 0;
   });
 }
 
@@ -777,6 +779,7 @@ toggle('#tMech', on => car.groups.mech.visible = on);
 toggle('#tInt', on => car.groups.interior.visible = on);
 toggle('#tComp', on => { on ? state.layers.add('elec') : state.layers.delete('elec'); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
 toggle('#tWires', on => { state.visible = new Set(on ? HARNESSES.map(h => h.id) : []); state.isolate = null; renderHarnesses(); renderList(); applyStyles(); });
+toggle('#tBounds', on => { state.bounds = on; try { localStorage.setItem('niva2131-bounds', on ? '1' : '0'); } catch {} applyStyles(); });
 toggle('#tParts', on => { state.layers = new Set(on ? PLAYERS.map(l => l.id) : []); saveLayers(); applyLayerVisibility(); renderLayers(); renderList(); });
 $('#layerList').addEventListener('change', e => {
   const l = e.target.dataset.l; if (!l) return;
@@ -1022,6 +1025,7 @@ renderer.setAnimationLoop(now => {
 prepareData(); placeComponents(); buildWires();
 try { if (localStorage.getItem('niva2131-ui-hidden')) document.body.classList.add('ui-hidden'); } catch {}
 applyLayerVisibility(); renderTabs(); renderLayers();
+$('#tBounds').setAttribute('aria-pressed', state.bounds);
 resize(); renderSources(); renderHarnesses(); renderList(); renderDrawer(); renderPins(); applyStyles();
 $('#loading').remove();
 </script>
